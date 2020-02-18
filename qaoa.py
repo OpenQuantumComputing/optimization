@@ -1,6 +1,6 @@
 from qiskit import *
 
-def createCircuit_MaxCut(x,G,depth,usebarrier=False):
+def createCircuit_MaxCut(x,G,depth,version=1,usebarrier=False):
     V = list(G.nodes)
     num_V = len(V)
     q = QuantumRegister(num_V)
@@ -16,9 +16,15 @@ def createCircuit_MaxCut(x,G,depth,usebarrier=False):
             i=int(edge[0])
             j=int(edge[1])
             w = G[i][j]['weight']
-            circ.cx(q[i],q[j])
-            circ.rz(w*gamma,q[j])
-            circ.cx(q[i],q[j])
+            wg = w*gamma
+            if version==1:
+                circ.cx(q[i],q[j])
+                circ.rz(wg,q[j])
+                circ.cx(q[i],q[j])
+            else:
+                circ.cu1(-2*wg, i, j)
+                circ.u1(wg, i)
+                circ.u1(wg, j)
         if usebarrier:
             circ.barrier()
         circ.rx(2*beta,range(num_V))
