@@ -42,7 +42,7 @@ def cost_MaxCut(x,G):
         C = C + w/2*(1-(2*x[i]-1)*(2*x[j]-1))
     return C
 
-def listcosts_MaxCut(G):
+def listSortedCosts_MaxCut(G):
     costs={}
     maximum=0
     solutions=[]
@@ -52,8 +52,6 @@ def listcosts_MaxCut(G):
         binstring="{0:b}".format(i).zfill(num_V)
         y=[int(i) for i in binstring]
         costs[binstring]=cost_MaxCut(y,G)
-        maximum = max(maximum,costs[binstring])
-    for key in costs:
-        if costs[key]==maximum:
-            solutions.append(key)
-    return costs, maximum, solutions
+    sortedcosts={k: v for k, v in sorted(costs.items(), key=lambda item: item[1])}
+    return sortedcosts
+
