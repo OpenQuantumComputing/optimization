@@ -1,8 +1,7 @@
-from qiskit import *
+from qiskit import QuantumRegister, ClassicalRegister, QuantumCircuit
 
 def createCircuit_MaxCut(x,G,depth,version=1,usebarrier=False):
-    V = list(G.nodes)
-    num_V = len(V)
+    num_V = G.number_of_nodes()
     q = QuantumRegister(num_V)
     c = ClassicalRegister(num_V)
     circ = QuantumCircuit(q,c)
@@ -15,7 +14,7 @@ def createCircuit_MaxCut(x,G,depth,version=1,usebarrier=False):
         for edge in G.edges():
             i=int(edge[0])
             j=int(edge[1])
-            w = G[i][j]['weight']
+            w = G[edge[0]][edge[1]]['weight']
             wg = w*gamma
             if version==1:
                 circ.cx(q[i],q[j])
@@ -38,7 +37,7 @@ def cost_MaxCut(x,G):
     for edge in G.edges():
         i = int(edge[0])
         j = int(edge[1])
-        w = G[i][j]['weight']
+        w = G[edge[0]][edge[1]]['weight']
         C = C + w/2*(1-(2*x[i]-1)*(2*x[j]-1))
     return C
 
@@ -46,8 +45,7 @@ def listSortedCosts_MaxCut(G):
     costs={}
     maximum=0
     solutions=[]
-    V = list(G.nodes)
-    num_V = len(V)
+    num_V = G.number_of_nodes()
     for i in range(2**num_V):
         binstring="{0:b}".format(i).zfill(num_V)
         y=[int(i) for i in binstring]
