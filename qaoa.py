@@ -54,13 +54,16 @@ def listSortedCosts_MaxCut(G):
     sortedcosts={k: v for k, v in sorted(costs.items(), key=lambda item: item[1])}
     return sortedcosts
 
-def costshist_MaxCut(G):
+def costsHist_MaxCut(G):
     num_V = G.number_of_nodes()
     costs=np.ones(2**num_V)
     for i in range(2**num_V):
+        if i%1024*2*2*2==0:
+            print(i/2**num_V*100, "%", end='\r')
         binstring="{0:b}".format(i).zfill(num_V)
         y=[int(i) for i in binstring]
         costs[i]=cost_MaxCut(y,G)
+    print("100%")
     return costs
 
 def bins_comp_basis(data, G):
@@ -86,9 +89,9 @@ def expectationValue_MaxCut(data,G):
     E=[]
     V = list(G.nodes)
     num_qubits = len(V)
-    for item in range(0,len(data.results)):
-        shots = data.results[item].shots
-        counts = data.results[item].data.counts
+    for item in range(0,len(data)):
+        shots = data[item].shots
+        counts = data[item].data.counts
         E.append(0)
         for key in list(counts.__dict__.keys()):
             c=getattr(counts, key)#number of counts
