@@ -1,12 +1,17 @@
 from qiskit import QuantumRegister, ClassicalRegister, QuantumCircuit
 import numpy as np
 
-def createCircuit_MaxCut(x,G,depth,version=1,usebarrier=False):
+def createCircuit_MaxCut(x,G,depth,version=1, applyX=[], usebarrier=False):
     num_V = G.number_of_nodes()
     q = QuantumRegister(num_V)
     c = ClassicalRegister(num_V)
     circ = QuantumCircuit(q,c)
-    circ.h(range(num_V))
+    if len(applyX)==0:
+        circ.h(range(num_V))
+    else:
+        if np.where(np.array(applyX)==1)[0].size>0:
+            circ.x(np.where(np.array(applyX)==1)[0])
+        circ.h(range(num_V))
     if usebarrier:
         circ.barrier()
     for d in range(depth):
@@ -67,6 +72,7 @@ def costsHist_MaxCut(G):
     return costs
 
 def bins_comp_basis(data, G):
+    max_solutions=[]
     num_V = G.number_of_nodes()
     bins_states = np.zeros(2**num_V)
     num_shots=0
@@ -81,9 +87,14 @@ def bins_comp_basis(data, G):
         num_solutions+=1
         y=[int(i) for i in str(binary_rep)]
         lc = cost_MaxCut(y,G)
-        max_cost=max(max_cost,lc)
+        if lc==max_cost:
+            max_solutions.append(y)
+        elif lc>max_cost:
+            max_solutions=[]
+            max_solutions.append(y)
+            max_cost=lc
         average_cost+=lc*counts
-    return bins_states, max_cost, average_cost/num_shots
+    return bins_states, max_cost, average_cost/num_shots, max_solutions
 
 def expectationValue_MaxCut(data,G):
     E=[]
