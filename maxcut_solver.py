@@ -70,17 +70,19 @@ def branch_and_bound(G):
     lp.optimizationDirection = 'max'
     mip = lp.getCbcModel()
     mip.logLevel = 0
-    mip.branchAndBound(-1)
+    # Setting number of threads
+    mip.numberThreads = 4
+    mip.branchAndBound()
 
     return mip.objectiveValue, [int(i) for i in mip.primalVariableSolution['x']]
 
 if __name__ == "__main__":
-    G = nx.erdos_renyi_graph(15, 0.6)
+    G = nx.erdos_renyi_graph(30, 0.6)
     for u,v in G.edges():
         G[u][v]['weight'] = 1
-    t = time.time()
-    print(enumerate(G))
-    print(time.time() - t)
+    # t = time.time()
+    # print(enumerate(G))
+    # print(time.time() - t)
     t = time.time()
     print(branch_and_bound(G))
     print(time.time() - t)
