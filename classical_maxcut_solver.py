@@ -4,31 +4,10 @@
 
 import networkx as nx
 import numpy as np
-import time
 from cylp.cy import CyCbcModel, CyClpSimplex
 from cylp.py.modeling.CyLPModel import CyLPModel, CyLPArray
 
-def enumerate(G):
-    if (len(G) > 30):
-        raise Exception("Too many solutions to enumerate.")
-
-    maxcut = []
-    maxcut_value = 0
-    N = len(G)
-    for i in range(2**N - 1):
-        x_bin = format(i, 'b').zfill(N)
-        x = [int(j) for j in x_bin]
-        c = 0
-        for u,v in G.edges():
-            c += G[u][v]['weight']/2*(1-(2*x[int(u)]-1)*(2*x[int(v)]-1))
-
-        if (c > maxcut_value):
-            maxcut = x
-            maxcut_value = c
-
-    return maxcut_value, maxcut
-
-def branch_and_bound(G):
+def branch_and_bound(G, num_threads=4):
     N = len(G)
     model = CyLPModel()
     # Decision variables, one for each node
@@ -71,18 +50,7 @@ def branch_and_bound(G):
     mip = lp.getCbcModel()
     mip.logLevel = 0
     # Setting number of threads
-    mip.numberThreads = 4
-    mip.branchAndBound()
+    mip.numberThreads = num_threads
+    mip.solve()
 
     return mip.objectiveValue, [int(i) for i in mip.primalVariableSolution['x']]
-
-if __name__ == "__main__":
-    G = nx.erdos_renyi_graph(30, 0.6)
-    for u,v in G.edges():
-        G[u][v]['weight'] = 1
-    # t = time.time()
-    # print(enumerate(G))
-    # print(time.time() - t)
-    t = time.time()
-    print(branch_and_bound(G))
-    print(time.time() - t)
