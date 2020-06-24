@@ -1,15 +1,10 @@
 from qiskit import QuantumRegister, ClassicalRegister, QuantumCircuit, execute
 import numpy as np
-import matplotlib.pyplot as plt
 import networkx as nx
 from scipy.optimize import minimize
 
-from qiskit import Aer
 
 
-backend = Aer.get_backend("qasm_simulator")
-# Global Variables
-NUM_SHOTS = 8192
 
 def createCircuit_MaxCut(x,G,depth,version=1, applyX=[], usebarrier=False):
     num_V = G.number_of_nodes()
@@ -149,13 +144,13 @@ def expectationValue_MaxCut(data,G):
 
 
 
-def objective_function(params, G):
+def objective_function(params, G, backend, num_shots=8192):
     """
     :return: minus the expectation value (in order to maximize MaxCut configuration)
     NB! If a list of circuits are ran, only returns the expectation value of the first circuit.
     """
     qc = createCircuit_MaxCut(params, G, int(len(params)/2))
-    res_data = execute(qc, backend, shots=NUM_SHOTS).result().results
+    res_data = execute(qc, backend, shots=num_shots).result().results
     E = expectationValue_MaxCut(res_data, G)
     return -E[0]
 
@@ -198,30 +193,29 @@ def get_constaints_for_COBYLA(depth, weighted):
         cons.append(u)
     return cons
 
-def optimize_random(K,G, depth=1, weighted=False):
+def optimize_random(K,G, backend, depth=1, weighted=False, num_shots=8192):
     """
     :param K: # Random initializations (RIs)
     :return: Array of best params (on the format where the gammas and betas are intertwined),
     the corresponding best energy value, and the average energy value for all the RIs
     """
-    rec = -np.inf
+    record = -np.inf
     avg_list = np.zeros(K)
-    rec_params = 42 # For debug purposes
     for i in range(K):
         init_params = random_init(depth, weighted)
         cons = get_constaints_for_COBYLA(depth, weighted)
-        sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G), constraints=cons)
+        sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G, backend, num_shots), constraints=cons)
         params = sol.x
         qc = createCircuit_MaxCut(params, G, depth)
-        temp_res_data = execute(qc, backend, shots=NUM_SHOTS).result().results
+        temp_res_data = execute(qc, backend, shots=num_shots).result().results
         E = expectationValue_MaxCut(temp_res_data, G)[0]
         avg_list[i] = E
-        if E>rec:
-            rec = E
-            rec_params = params
-    return rec_params, rec, np.average(avg_list)
+        if E>record:
+            record = E
+            record_params = params
+    return record_params, record, np.average(avg_list)
 
-def scale_p(K, G, depth=3, weighted=False):
+def scale_p(K, G, backend, depth=3, weighted=False, num_shots=8192):
     """
     :return: arrays of the p_values used, the corresponding array for the energy from the optimal
          energy config, and the average energy (for all the RIs at each p value)
@@ -230,7 +224,7 @@ def scale_p(K, G, depth=3, weighted=False):
     avg_list = np.zeros(depth)
     p_list = np.arange(1, depth + 1, 1)
     for d in range(1, depth + 1):
-        temp, H_list[d-1], avg_list[d-1] = optimize_random(K, G, d, weighted)
+        temp, H_list[d-1], avg_list[d-1] = optimize_random(K, G, backend, d, weighted, num_shots)
     return p_list, H_list, avg_list
 
 
@@ -251,17 +245,16 @@ def INTERP_init(params_prev_step):
     params_out_list[p] = params_prev_step[p-1]
     return params_out_list
 
-def optimize_INTERP(K, G, depth, weighted=False):
+def optimize_INTERP(K, G, depth, backend, weighted=False, num_shots=8192):
     """
     Optimizes the params using the INTERP heuristic
     :return: Array of the optimal parameters, and the correponding energy value
     """
-    rec = -np.inf
-    rec_params = 42 # Debug purpose
+    record = -np.inf
     for i in range(K):
-        init_params = np.zeros(2) # NB! This is not motivated from the paper, should be checked further
+        init_params = np.zeros(2)
         cons = get_constaints_for_COBYLA(1, weighted)
-        sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G), constraints=cons)
+        sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G, backend, num_shots), constraints=cons)
         params = sol.x
         init_gamma = params[0:1]
         init_beta = params[1:2]
@@ -272,20 +265,27 @@ def optimize_INTERP(K, G, depth, weighted=False):
             init_params[0::2] = init_gamma
             init_params[1::2] = init_beta
             cons = get_constaints_for_COBYLA(p, weighted)
-            sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G), constraints=cons)
+            sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G, backend, num_shots), constraints=cons)
             params = sol.x
             init_gamma = params[0::2]
             init_beta = params[1::2]
         qc = createCircuit_MaxCut(params, G, depth)
-        temp_res_data = execute(qc, backend, shots=NUM_SHOTS).result().results
+        temp_res_data = execute(qc, backend, shots=num_shots).result().results
         E = expectationValue_MaxCut(temp_res_data, G)[0]
-        if E>rec:
-            rec = E
-            rec_params = params
-    return rec_params, rec
+        if E>record:
+            record = E
+            record_params = params
+    return record_params, record
 
 
 def add_weights(G, weighted=False):
+    """
+    Adds weights G. If weighted, the weights are uniformly distributed from [0,1],
+    otherwise all the weights are equal to 1.0. Does not return anything, but modifies
+    the input graph.
+    :param G:
+    :param weighted:
+    """
     if weighted:
         for edge in G.edges():
             i=int(edge[0])
@@ -298,52 +298,3 @@ def add_weights(G, weighted=False):
             j=int(edge[1])
             E = [(i,j,1.0)]
             G.add_weighted_edges_from(E)
-
-def gamma_beta_func_of_p(p, M=5, K = 20, heuristic=False, weighted=False):
-    fig, (ax1, ax2)= plt.subplots(nrows=2, ncols=1, sharex=True)
-    for i in range(M):
-        G = nx.random_regular_graph(3, 6)
-        add_weights(G, weighted)
-        costs = costsHist_MaxCut(G)
-        MAX_COST = max(costs)
-        print("Max cost: ", MAX_COST)
-        if heuristic:
-            params, E = optimize_INTERP(K, G, p, weighted)
-        else:
-            params, E, temp = optimize_random(K, G, p, weighted)
-        r = E/MAX_COST
-        print("Best approximation ratio, r = ", r)
-        p_list = np.arange(1, p + 1, 1)
-        ax1.scatter(p_list, params[0::2]/np.pi, label=r"$r = %.2f$" %(r))
-        ax1.plot(p_list, params[0::2]/np.pi, linestyle="--", alpha=0.4, color="k")
-        ax2.scatter(p_list, params[1::2] / np.pi, label=r"$r = %.2f$" % (r))
-        ax2.plot(p_list, params[1::2] / np.pi, linestyle="--", alpha=0.4, color="k")
-
-    ax2.set_xlabel(r"$p$")
-    ax1.set_ylabel(r"$\gamma/\pi$")
-    ax2.set_ylabel(r"$\beta/\pi$")
-
-    ax1.legend()
-    ax2.legend()
-    plt.show()
-
-
-
-def compare_methods(K, G, p_max, weighted=False):
-    """
-    Uses K tries to find the best approx ratio for both INTERP and RI. Does this for all integer p, 1<= p <= p_max
-    """
-    costs = costsHist_MaxCut(G)
-    MAX_COST = max(costs)
-    p_list = np.arange(1, p_max + 1, 1)
-    E_heur_list = np.zeros(len(p_list))
-    E_ran_list = np.zeros(len(p_list))
-    for i in range(len(p_list)):
-        params_heur, E_heur_list[i] = optimize_INTERP(K, G, p_list[i], weighted)
-        params_ran, E_ran_list[i], temp = optimize_random(K, G, p_list[i], weighted)
-    plt.plot(p_list, E_ran_list/MAX_COST, "-o", label="RI")
-    plt.plot(p_list, E_heur_list/MAX_COST, "-o", label="INTERP")
-    plt.xlabel(r"$p$")
-    plt.ylabel(r"$ r^{opt}$")
-    plt.legend()
-    plt.show()
