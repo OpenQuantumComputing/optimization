@@ -245,7 +245,7 @@ def INTERP_init(params_prev_step):
     params_out_list[p] = params_prev_step[p-1]
     return params_out_list
 
-def optimize_INTERP(K, G, depth, backend, weighted=False, num_shots=8192):
+def optimize_INTERP(K, G, backend, depth, weighted=False, num_shots=8192):
     """
     Optimizes the params using the INTERP heuristic
     :return: Array of the optimal parameters, and the correponding energy value
