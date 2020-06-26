@@ -295,9 +295,9 @@ def measurementStatistics_MaxCut(experiment_results, G):
 
         E = 0
         E2 = 0
-        for measured_integer in list(counts.__dict__.keys()):
-            count = getattr(counts, measured_integer)
-            binstring = "{0:b}".format(int(measured_integer,0)).zfill(num_qubits)
+        for hexkey in list(counts.__dict__.keys()):
+            count = getattr(counts, hexkey)
+            binstring = "{0:b}".format(int(hexkey,0)).zfill(num_qubits)
             binlist = [int(i) for i in binstring]
             cost = cost_MaxCut(binlist,G)
             E += cost*count/n_shots;
