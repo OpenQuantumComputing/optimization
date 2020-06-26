@@ -5,7 +5,6 @@ from scipy.optimize import minimize
 
 
 
-
 def createCircuit_MaxCut(x,G,depth,version=1, applyX=[], usebarrier=False):
     num_V = G.number_of_nodes()
     q = QuantumRegister(num_V)
@@ -121,28 +120,6 @@ def bins_comp_basis(data, G):
         average_cost+=lc*counts
     return bins_states, max_cost, average_cost/num_shots, max_solutions
 
-def expectationValue_MaxCut(data,G):
-    """
-    Returns the expectation based on the shot counts and the associated cost. If results from multiple circuits are used
-    as input, each circuit's expectation value are returned.
-    :param data: Input on the form execute(...).result().results
-    :return: List format of the expectation values.
-    """
-    E=[]
-    V = list(G.nodes)
-    num_qubits = len(V)
-    for item in range(0,len(data)):
-        shots = data[item].shots
-        counts = data[item].data.counts
-        E.append(0)
-        for key in list(counts.__dict__.keys()):
-            c=getattr(counts, key)#number of counts
-            binstring="{0:b}".format(int(key,0)).zfill(num_qubits)
-            y=[int(i) for i in binstring]
-            E[item] += cost_MaxCut(y,G)*c/shots
-    return E
-
-
 
 def objective_function(params, G, backend, num_shots=8192):
     """
@@ -151,7 +128,7 @@ def objective_function(params, G, backend, num_shots=8192):
     """
     qc = createCircuit_MaxCut(params, G, int(len(params)/2))
     res_data = execute(qc, backend, shots=num_shots).result().results
-    E = expectationValue_MaxCut(res_data, G)
+    E,_ = measurementStatistics_MaxCut(res_data, G)
     return -E[0]
 
 def random_init(depth, weighted):
@@ -208,7 +185,7 @@ def optimize_random(K,G, backend, depth=1, weighted=False, num_shots=8192):
         params = sol.x
         qc = createCircuit_MaxCut(params, G, depth)
         temp_res_data = execute(qc, backend, shots=num_shots).result().results
-        E = expectationValue_MaxCut(temp_res_data, G)[0]
+        [E],_ = measurementStatistics_MaxCut(temp_res_data, G)
         avg_list[i] = E
         if E>record:
             record = E
@@ -271,7 +248,7 @@ def optimize_INTERP(K, G, backend, depth, weighted=False, num_shots=8192):
             init_beta = params[1::2]
         qc = createCircuit_MaxCut(params, G, depth)
         temp_res_data = execute(qc, backend, shots=num_shots).result().results
-        E = expectationValue_MaxCut(temp_res_data, G)[0]
+        [E],_ = measurementStatistics_MaxCut(temp_res_data, G)
         if E>record:
             record = E
             record_params = params
@@ -298,3 +275,91 @@ def add_weights(G, weighted=False):
             j=int(edge[1])
             E = [(i,j,1.0)]
             G.add_weighted_edges_from(E)
+
+def measurementStatistics_MaxCut(experiment_results, G):
+    """
+    Calculates the expectation and variance of the cost function. If
+    results from multiple circuits are used as input, each circuit's
+    expectation value are returned.
+    :param experiment_results: Input on the form execute(...).result().results
+    :param G: The graph on which the cost function is defined.
+    :return: Lists of expectation values and variances
+    """
+
+    expectations = []
+    variances = []
+    num_qubits = G.number_of_nodes()
+    for result in experiment_results:
+        n_shots = result.shots
+        counts = result.data.counts
+
+        E = 0
+        E2 = 0
+        for hexkey in list(counts.__dict__.keys()):
+            count = getattr(counts, hexkey)
+            binstring = "{0:b}".format(int(hexkey,0)).zfill(num_qubits)
+            binlist = [int(i) for i in binstring]
+            cost = cost_MaxCut(binlist,G)
+            E += cost*count/n_shots;
+            E2 += cost**2*count/n_shots;
+
+        if n_shots == 1:
+            v = 0
+        else:
+            v = (E2-E**2)*n_shots/(n_shots-1)
+        expectations.append(E)
+        variances.append(v)
+    return expectations, variances
+
+def sampleUntilPrecision_MaxCut(circuit,G,backend,noisemodel,min_n_shots,max_n_shots,E_atol,E_rtol,dv_rtol,confidence_index):
+    """
+    Samples from the circuit and calculates the cost function until the specified
+    error tolerances are satisfied. This may include several repetitions, either if
+    the number of initial shots was too small, or if the variance estimate changed
+    to a large degree since the last repetition, meaning that the required shot
+    estimate was inaccurate.
+
+    :param circuit: The circuit that will be sampled.
+    :param G: The graph on which the cost function is defined.
+    :param backend: The backend that will execute the circuit.
+    :param noisemodel: The noisemodel to use, e.g. when simulating.
+    :param min_n_shots: The minimum number of shots to be executed.
+    :param max_n_shots: The maximum number of shots to be executed.
+    :param E_atol: Absolute error tolerance for the expectation value.
+    :param E_rtol: Relative error tolerance for the expectation value.
+    :param dv_rtol: Relative change in variance tolerated without repeating.
+    :param confidence_index: The degree of confidence required.
+    :return: Lists of expectation values, variances and shots each repetition.
+    """
+
+    E_tot = 0
+    v_tot = 0
+    n_tot = 0
+
+    E_list = []
+    v_list = []
+    n_list = []
+
+    n_req = min_n_shots
+    v_prev = v_tot
+    while n_tot < n_req and np.abs(v_tot-v_prev) >= dv_rtol*v_prev:
+        v_prev = v_tot
+        n_cur = n_req - n_tot
+        experiment = execute(circuit, backend, noise_model=noisemodel, shots=n_cur)
+
+        [E_cur],[v_cur] = measurementStatistics_MaxCut(experiment.result().results,G)
+        E_tot = (n_tot*E_tot + n_cur*E_cur)/(n_tot+n_cur)
+        v_tot = ((n_tot-1)*v_tot + (n_cur-1)*v_cur)/(n_tot+n_cur-1)
+        n_tot = n_req
+        E_list.append(E_tot)
+        v_list.append(v_tot)
+        n_list.append(n_cur)
+
+        E_tol = min(E_atol,E_rtol*E_tot)
+        n_req = int(np.ceil(confidence_index**2*v_tot/E_tol**2))
+
+        if n_req > max_n_shots:
+            print('Warning: need %d samples to satisfy tolerance %.2e, but max_n_shots = %d.' % (n_req, E_tol, max_n_shots))
+            n_req = max_n_shots
+
+    return E_list,v_list,n_list
