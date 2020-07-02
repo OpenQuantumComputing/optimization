@@ -146,6 +146,38 @@ def random_init(depth, weighted):
     initial[1::2] = beta_list
     return initial
 
+def parameterBounds_MaxCut(G,decimals=0,weight_rtol=1e-3):
+    """
+    :param G: The weighted or unweighted graph to perform MaxCut on.p
+    :param decimals: The number of decimals to keep in the weights.
+    :param weight_rtol: The relative error allowed when rounding the weights.
+    :return: Bounds of the first periodic domain for gamma and beta.
+    """
+    scaling_factor = np.power(10,decimals)
+
+    scaled_weights = []
+    for _,_,w in G.edges.data('weight',default=1):
+        scaled_w = w*scaling_factor
+        scaled_w_int = int(round(scaled_w))
+        if abs(scaled_w_int-scaled_w) > weight_rtol*scaled_w:
+            print('Warning: When finding parameter bounds, rounding the weight %.2e '
+                  'to %d decimals, we introduced an error larger than the relative '
+                  'tolerance %.2e.' % (w, decimals,weight_rtol))
+        scaled_weights.append(scaled_w_int)
+
+    gcd = np.gcd.reduce(scaled_weights)
+
+    gamma_period = 2*np.pi*scaling_factor/gcd
+    beta_period = np.pi/2
+
+    gamma_min = 0
+    gamma_max = gamma_period/2
+    beta_min = 0
+    beta_max = beta_period
+
+    return (gamma_min,gamma_max),(beta_min,beta_max)
+
+
 def get_constaints_for_COBYLA(depth, weighted):
     """
     :return: List of constraints applying to the parameters
