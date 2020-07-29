@@ -177,6 +177,19 @@ def parameterBounds_MaxCut(G,decimals=0,weight_rtol=1e-3):
     return (gamma_min,gamma_max),(beta_min,beta_max)
 
 
+def wrapParameters_MaxCut(gamma,beta,gamma_bounds,beta_bounds):
+    gamma_period = 2*(gamma_bounds[1]-gamma_bounds[0])
+    beta_period = beta_bounds[1]-beta_bounds[0]
+
+    gamma = np.mod(gamma,gamma_period)
+    beta = np.mod(beta,beta_period)
+
+    if gamma > gamma_period/2:
+        gamma = gamma_period - gamma
+        beta = beta_period - beta
+    return gamma,beta
+
+
 def COBYLAConstraints_MaxCut(gamma_bounds,beta_bounds,depth):
     """
     Get constraint list to use with COBYLA.
