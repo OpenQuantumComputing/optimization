@@ -131,46 +131,74 @@ def objective_function(params, G, backend, num_shots=8192):
     E,_ = measurementStatistics_MaxCut(res_data, G)
     return -E[0]
 
-def random_init(depth, weighted):
+def random_init(gamma_bounds,beta_bounds,depth):
     """
     Enforces the bounds of gamma and beta based on the graph type.
+    :param gamma_bounds: Parameter bound tuple (min,max) for gamma
+    :param beta_bounds: Parameter bound tuple (min,max) for beta
     :return: np.array on the form (gamma_1, beta_1, gamma_2, ...., gamma_d, beta_d)
     """
-    if weighted:
-        gamma_list = np.random.uniform(-10,10, size=depth) # Here 10 is arbitrary
-    else:
-        gamma_list = np.random.uniform(-np.pi / 2, np.pi / 2, size=depth)
-    beta_list = np.random.uniform(-np.pi / 4, np.pi / 4, size=depth)
+    gamma_list = np.random.uniform(gamma_bounds[0],gamma_bounds[1], size=depth)
+    beta_list = np.random.uniform(beta_bounds[0],beta_bounds[1], size=depth)
     initial = np.empty((gamma_list.size + beta_list.size,), dtype=gamma_list.dtype)
     initial[0::2] = gamma_list
     initial[1::2] = beta_list
     return initial
 
-def get_constaints_for_COBYLA(depth, weighted):
+def parameterBounds_MaxCut(G,decimals=0,weight_rtol=1e-3):
     """
+    :param G: The weighted or unweighted graph to perform MaxCut on.p
+    :param decimals: The number of decimals to keep in the weights.
+    :param weight_rtol: The relative error allowed when rounding the weights.
+    :return: Bounds of the first periodic domain for gamma and beta.
+    """
+    scaling_factor = np.power(10,decimals)
+
+    scaled_weights = []
+    for _,_,w in G.edges.data('weight',default=1):
+        scaled_w = w*scaling_factor
+        scaled_w_int = int(round(scaled_w))
+        if abs(scaled_w_int-scaled_w) > weight_rtol*scaled_w:
+            print('Warning: When finding parameter bounds, rounding the weight %.2e '
+                  'to %d decimals, we introduced an error larger than the relative '
+                  'tolerance %.2e.' % (w, decimals,weight_rtol))
+        scaled_weights.append(scaled_w_int)
+
+    gcd = np.gcd.reduce(scaled_weights)
+
+    gamma_period = 2*np.pi*scaling_factor/gcd
+    beta_period = np.pi/2
+
+    gamma_min = 0
+    gamma_max = gamma_period/2
+    beta_min = 0
+    beta_max = beta_period
+
+    return (gamma_min,gamma_max),(beta_min,beta_max)
+
+
+def COBYLAConstraints_MaxCut(gamma_bounds,beta_bounds,depth):
+    """
+    Get constraint list to use with COBYLA.
+    :param gamma_bounds: Parameter bound tuple (min,max) for gamma
+    :param beta_bounds: Parameter bound tuple (min,max) for beta
+    :param depth: Depth of the circuit
     :return: List of constraints applying to the parameters
     """
-    bounds = []
-    if weighted:
-        for i in range(depth):
-            bounds.append([-10,10]) # Arbitrary choice
-            bounds.append([-np.pi/4, np.pi/4])
-    else:
-        for i in range(depth):
-            bounds.append([-np.pi/2, np.pi/2])
-            bounds.append([-np.pi/4, np.pi/4])
-    cons = []
-    for factor in range(len(bounds)):
-        lower, upper = bounds[factor]
-        l = {'type': 'ineq',
-             'fun': lambda x, lb=lower, i=factor: x[i] - lb}
-        u = {'type': 'ineq',
-             'fun': lambda x, ub=upper, i=factor: ub - x[i]}
-        cons.append(l)
-        cons.append(u)
-    return cons
+    constraints = []
+    for j in range(depth):
+        if j % 2 == 0:
+            (lower,upper) = gamma_bounds
+        else:
+            (lower, upper) = beta_bounds
 
-def optimize_random(K,G, backend, depth=1, weighted=False, num_shots=8192):
+        lower_constraint = {'type': 'ineq', 'fun': lambda x, lb=lower, i=j: x[i] - lb}
+        upper_constraint = {'type': 'ineq', 'fun': lambda x, ub=upper, i=j: ub - x[i]}
+        constraints.append(lower_constraint)
+        constraints.append(upper_constraint)
+    return constraints
+
+def optimize_random(K, G, backend, depth=1, decimals=0, num_shots=8192):
     """
     :param K: # Random initializations (RIs)
     :return: Array of best params (on the format where the gammas and betas are intertwined),
@@ -179,8 +207,9 @@ def optimize_random(K,G, backend, depth=1, weighted=False, num_shots=8192):
     record = -np.inf
     avg_list = np.zeros(K)
     for i in range(K):
-        init_params = random_init(depth, weighted)
-        cons = get_constaints_for_COBYLA(depth, weighted)
+        gamma_bounds, beta_bounds = parameterBounds_MaxCut(G, decimals=decimals)
+        init_params = random_init(gamma_bounds, beta_bounds, depth)
+        cons = COBYLAConstraints_MaxCut(gamma_bounds, beta_bounds, depth)
         sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G, backend, num_shots), constraints=cons)
         params = sol.x
         qc = createCircuit_MaxCut(params, G, depth)
@@ -192,7 +221,7 @@ def optimize_random(K,G, backend, depth=1, weighted=False, num_shots=8192):
             record_params = params
     return record_params, record, np.average(avg_list)
 
-def scale_p(K, G, backend, depth=3, weighted=False, num_shots=8192):
+def scale_p(K, G, backend, depth=3, decimals=0, num_shots=8192):
     """
     :return: arrays of the p_values used, the corresponding array for the energy from the optimal
          energy config, and the average energy (for all the RIs at each p value)
@@ -201,7 +230,7 @@ def scale_p(K, G, backend, depth=3, weighted=False, num_shots=8192):
     avg_list = np.zeros(depth)
     p_list = np.arange(1, depth + 1, 1)
     for d in range(1, depth + 1):
-        temp, H_list[d-1], avg_list[d-1] = optimize_random(K, G, backend, d, weighted, num_shots)
+        temp, H_list[d-1], avg_list[d-1] = optimize_random(K, G, backend, d, decimals=decimals, num_shots=num_shots)
     return p_list, H_list, avg_list
 
 
@@ -222,7 +251,7 @@ def INTERP_init(params_prev_step):
     params_out_list[p] = params_prev_step[p-1]
     return params_out_list
 
-def optimize_INTERP(K, G, backend, depth, weighted=False, num_shots=8192):
+def optimize_INTERP(K, G, backend, depth, decimals=0, num_shots=8192):
     """
     Optimizes the params using the INTERP heuristic
     :return: Array of the optimal parameters, and the correponding energy value
@@ -230,7 +259,8 @@ def optimize_INTERP(K, G, backend, depth, weighted=False, num_shots=8192):
     record = -np.inf
     for i in range(K):
         init_params = np.zeros(2)
-        cons = get_constaints_for_COBYLA(1, weighted)
+        gamma_bounds, beta_bounds = parameterBounds_MaxCut(G, decimals=decimals)
+        cons = COBYLAConstraints_MaxCut(gamma_bounds, beta_bounds, 1)
         sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G, backend, num_shots), constraints=cons)
         params = sol.x
         init_gamma = params[0:1]
@@ -241,7 +271,7 @@ def optimize_INTERP(K, G, backend, depth, weighted=False, num_shots=8192):
             init_params = np.zeros(2 * p)
             init_params[0::2] = init_gamma
             init_params[1::2] = init_beta
-            cons = get_constaints_for_COBYLA(p, weighted)
+            cons = COBYLAConstraints_MaxCut(gamma_bounds, beta_bounds, p)
             sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G, backend, num_shots), constraints=cons)
             params = sol.x
             init_gamma = params[0::2]
@@ -255,26 +285,17 @@ def optimize_INTERP(K, G, backend, depth, weighted=False, num_shots=8192):
     return record_params, record
 
 
-def add_weights(G, weighted=False):
+def addWeights_MaxCut(G, decimals=0):
     """
-    Adds weights G. If weighted, the weights are uniformly distributed from [0,1],
-    otherwise all the weights are equal to 1.0. Does not return anything, but modifies
-    the input graph.
-    :param G:
-    :param weighted:
+    Adds weights G distributed from [0,1], rounded up to a number of decimals.
+    Does not return anything, but modifies the input graph.
+    :param G: The graph to modify.
+    :param decimals: The number of decimals to use.
     """
-    if weighted:
-        for edge in G.edges():
-            i=int(edge[0])
-            j=int(edge[1])
-            E = [(i,j,np.random.uniform())]
-            G.add_weighted_edges_from(E)
-    else:
-        for edge in G.edges():
-            i=int(edge[0])
-            j=int(edge[1])
-            E = [(i,j,1.0)]
-            G.add_weighted_edges_from(E)
+    scaling_factor = np.power(10,decimals)
+    for i,j in G.edges():
+        w = np.ceil(np.random.uniform()*scaling_factor)/scaling_factor
+        G.add_edge(i,j,weight=w)
 
 def measurementStatistics_MaxCut(experiment_results, G):
     """
