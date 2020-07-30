@@ -189,6 +189,18 @@ def wrapParameters_MaxCut(gamma,beta,gamma_bounds,beta_bounds):
         beta = beta_period - beta
     return gamma,beta
 
+def spatialFrequencies_MaxCut(G):
+    """
+    Get the maximum typical frequencies for parameter space
+    :param G: The graph with weights.
+    :return: tuple with gamma and beta frequencies
+    """
+    weights = [w for _,_,w in G.edges.data('weight',default=1)]
+    gamma_freq = np.linalg.norm(weights,2)/(2*np.pi)
+    beta_freq = np.sqrt(G.number_of_nodes())/(np.pi)
+
+    return gamma_freq,beta_freq
+
 
 def COBYLAConstraints_MaxCut(gamma_bounds,beta_bounds,depth):
     """
