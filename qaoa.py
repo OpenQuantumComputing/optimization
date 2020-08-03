@@ -189,9 +189,8 @@ def wrapParameters_MaxCut(gamma,beta,gamma_bounds,beta_bounds):
         beta = beta_period - beta
     return gamma,beta
 
-# WARNING: While the following function does seem to work empirically,
-# Herman believes that the theoretical backing is flawed. Should be
-# fixed at some point.
+# WARNING: While the following function does empirically seem to
+# work, the theoretical backing should be double checked.
 def spatialFrequencies_MaxCut(G):
     """
     Get the maximum typical frequencies for parameter space
