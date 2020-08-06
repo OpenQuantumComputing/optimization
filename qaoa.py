@@ -1,101 +1,463 @@
 from qiskit import QuantumRegister, ClassicalRegister, QuantumCircuit, execute
 import numpy as np
 import networkx as nx
+import math
+import os
 from scipy.optimize import minimize
 
+import sys
+sys.path.append('../')
 
+from qiskit_utilities.utilities import *
 
-def createCircuit_MaxCut(x,G,depth,version=1, applyX=[], usebarrier=False):
-    num_V = G.number_of_nodes()
-    q = QuantumRegister(num_V)
-    c = ClassicalRegister(num_V)
-    circ = QuantumCircuit(q,c)
-    if len(applyX)==0:
-        circ.h(range(num_V))
+def addWeights_MaxCut(G, decimals=0):
+    """
+    Adds weights G distributed from [0,1], rounded up to a number of decimals.
+    Does not return anything, but modifies the input graph.
+    :param G: The graph to modify.
+    :param decimals: The number of decimals to use.
+    """
+    scaling_factor = np.power(10,decimals)
+    for i,j in G.edges():
+        w = np.ceil(np.random.uniform()*scaling_factor)/scaling_factor
+        G.add_edge(i,j,weight=w)
+
+def Cn_U3_0theta0(qc, control_indices, target_index, theta):
+    """
+    Ref: https://arxiv.org/abs/0708.3274
+
+    """
+    n=len(control_indices)
+    if n == 0:
+        qc.rz(theta, control_indices)
+    elif n == 1:
+        qc.cu3(0, theta, 0, control_indices, target_index)
+    elif n == 2:
+        qc.cu3(0, theta/ 2, 0, control_indices[1], target_index)  # V gate, V^2 = U
+        qc.cx(control_indices[0], control_indices[1])
+        qc.cu3(0, -theta/ 2, 0, control_indices[1], target_index)  # V dagger gate
+        qc.cx(control_indices[0], control_indices[1])
+        qc.cu3(0, theta/ 2, 0, control_indices[0], target_index) #V gate
     else:
-        if np.where(np.array(applyX)==1)[0].size>0:
-            circ.x(np.where(np.array(applyX)==1)[0])
-        circ.h(range(num_V))
-    if usebarrier:
-        circ.barrier()
-    for d in range(depth):
-        gamma=x[2*d]
-        beta=x[2*d+1]
-        for edge in G.edges():
-            i=int(edge[0])
-            j=int(edge[1])
-            w = G[edge[0]][edge[1]]['weight']
-            wg = w*gamma
-            if version==1:
-                circ.cx(q[i],q[j])
-                circ.rz(wg,q[j])
-                circ.cx(q[i],q[j])
-            else:
-                circ.cu1(-2*wg, i, j)
-                circ.u1(wg, i)
-                circ.u1(wg, j)
-        if usebarrier:
-            circ.barrier()
-        circ.rx(2*beta,range(num_V))
-        if usebarrier:
-            circ.barrier()
-    circ.measure(q,c)
-    return circ
+        raise Exception("C^nU_3(0,theta,0) not yet implemented for n="+str(n)+".")
 
-def cost_MaxCut(x,G):
-    C=0
+
+def binstringToLabels_MaxKCut(k_cuts,num_V,binstring):
+    k_bits = kBits_MaxKCut(k_cuts)
+    label_list = [int(binstring[j*k_bits:(j+1)*k_bits], 2) for j in range(num_V)]
+    label_string = ''
+    for label in label_list:
+        label_string += str(label)
+    return label_string
+
+def kBits_MaxKCut(k_cuts):
+    return int(np.ceil(np.log2(k_cuts)))
+
+def cost_MaxCut(labels, G, k_cuts):
+    C = 0
     for edge in G.edges():
         i = int(edge[0])
         j = int(edge[1])
-        w = G[edge[0]][edge[1]]['weight']
-        C = C + w/2*(1-(2*x[i]-1)*(2*x[j]-1))
+        li=min(k_cuts-1,int(labels[i]))## e.g. for k_cuts=3, labels 2 and 3 should be equal
+        lj=min(k_cuts-1,int(labels[j]))## e.g. for k_cuts=3, labels 2 and 3 should be equal
+        if li != lj:
+            w = G[edge[0]][edge[1]]['weight']
+            C += w
     return C
 
-def enumerate(G):
+def createCircuit_MaxCut(x, G, depth, k_cuts, version=1, usebarrier=False, name=None):
+
+    num_V = G.number_of_nodes()
+    k_bits = kBits_MaxKCut(k_cuts)
+    if version==2:
+        if k_cuts==2:
+            Hij = np.array((-1, 1,
+                             1,-1,))
+        elif k_cuts==3:
+            Hij = np.array((-1, 1, 1, 1,
+                             1,-1, 1, 1,
+                             1, 1,-1,-1,
+                             1, 1,-1,-1))
+        elif k_cuts==4:
+            Hij = np.array((-1, 1, 1, 1,
+                             1,-1, 1, 1,
+                             1, 1,-1, 1,
+                             1, 1, 1,-1))
+        elif k_cuts==5:
+            Hij = np.array((-1, 1, 1, 1, 1, 1, 1, 1, 
+                             1,-1, 1, 1, 1, 1, 1, 1, 
+                             1, 1,-1, 1, 1, 1, 1, 1, 
+                             1, 1, 1,-1, 1, 1, 1, 1, 
+                             1, 1, 1, 1,-1,-1,-1,-1, 
+                             1, 1, 1, 1,-1,-1,-1,-1, 
+                             1, 1, 1, 1,-1,-1,-1,-1, 
+                             1, 1, 1, 1,-1,-1,-1,-1)) 
+        elif k_cuts==6:
+            Hij = np.array((-1, 1, 1, 1, 1, 1, 1, 1, 
+                             1,-1, 1, 1, 1, 1, 1, 1, 
+                             1, 1,-1, 1, 1, 1, 1, 1, 
+                             1, 1, 1,-1, 1, 1, 1, 1, 
+                             1, 1, 1, 1,-1, 1, 1, 1, 
+                             1, 1, 1, 1, 1,-1,-1,-1, 
+                             1, 1, 1, 1, 1,-1,-1,-1, 
+                             1, 1, 1, 1, 1,-1,-1,-1)) 
+        elif k_cuts==7:
+            Hij = np.array((-1, 1, 1, 1, 1, 1, 1, 1, 
+                             1,-1, 1, 1, 1, 1, 1, 1, 
+                             1, 1,-1, 1, 1, 1, 1, 1, 
+                             1, 1, 1,-1, 1, 1, 1, 1, 
+                             1, 1, 1, 1,-1, 1, 1, 1, 
+                             1, 1, 1, 1, 1,-1, 1, 1, 
+                             1, 1, 1, 1, 1, 1,-1,-1, 
+                             1, 1, 1, 1, 1, 1,-1,-1)) 
+        elif k_cuts==8:
+            Hij = np.array((-1, 1, 1, 1, 1, 1, 1, 1, 
+                             1,-1, 1, 1, 1, 1, 1, 1, 
+                             1, 1,-1, 1, 1, 1, 1, 1, 
+                             1, 1, 1,-1, 1, 1, 1, 1, 
+                             1, 1, 1, 1,-1, 1, 1, 1, 
+                             1, 1, 1, 1, 1,-1, 1, 1, 
+                             1, 1, 1, 1, 1, 1,-1, 1, 
+                             1, 1, 1, 1, 1, 1, 1,-1)) 
+        else:
+            raise Exception("Circuit creation for k=",k_cuts," not implemented for version 2 (hard coded).")
+
+    # we need 2 auxillary qubits if k is not a power of two
+    num_aux=0
+    k_is_power_of_two = math.log(k_cuts, 2).is_integer()
+    if version==1 and not k_is_power_of_two:
+        num_aux=2
+        ind_a1=num_V * k_bits + num_aux - 2
+        ind_a2=num_V * k_bits + num_aux - 1
+
+    q = QuantumRegister(num_V * k_bits + num_aux)
+    c = ClassicalRegister(num_V * k_bits)
+    circ = QuantumCircuit(q, c, name=name)
+    circ.h(range(num_V * k_bits))
+
+    if usebarrier:
+        circ.barrier()
+    for d in range(depth):
+        gamma = x[2 * d]
+        beta = x[2 * d + 1]
+        if version==2:
+            for edge in G.edges():
+                i = int(edge[0])
+                j = int(edge[1])
+                w = G[edge[0]][edge[1]]['weight']
+                wg = w * gamma
+                I = i * k_bits
+                J = j * k_bits
+                ind_Hij = [i_ for i_ in range(I, I+k_bits)]
+                for j_ in range(J,J+k_bits):
+                    ind_Hij.append(j_)
+                U = np.diag(np.exp(-1j * (-wg) / 2 * Hij))
+                circ.unitary(U, ind_Hij, 'Hij('+"{:.2f}".format(wg)+")")
+        else:
+            if k_cuts == 2:
+                for edge in G.edges():
+                    i = int(edge[0])
+                    j = int(edge[1])
+                    w = G[edge[0]][edge[1]]['weight']
+                    wg = w * gamma
+                    circ.cx(q[i], q[j])
+                    circ.rz(wg, q[j])
+                    circ.cx(q[i], q[j])
+                    # this is an equivalent implementation:
+                    #    circ.cu1(-2 * wg, i, j)
+                    #    circ.u1(wg, i)
+                    #    circ.u1(wg, j)
+                    if usebarrier:
+                        circ.barrier()
+            elif k_is_power_of_two:
+                for edge in G.edges():
+                    i = int(edge[0])
+                    j = int(edge[1])
+                    w = G[edge[0]][edge[1]]['weight']
+                    wg = w * gamma
+                    I = i * k_bits
+                    J = j * k_bits
+                    for k in range(k_bits):
+                        circ.cx(I + k, J + k)
+                        circ.x(J + k)
+                    Cn_U3_0theta0(circ, [J-1+ind for ind in range(1,k_bits)], J+k_bits-1, -wg)
+                    for k in reversed(range(k_bits)):
+                        circ.x(J + k)
+                        circ.cx(I + k, J + k)
+                    if usebarrier:
+                        circ.barrier()
+            elif k_cuts == 3:
+                for edge in G.edges():
+                    i = int(edge[0])
+                    j = int(edge[1])
+                    w = G[edge[0]][edge[1]]['weight']
+                    wg = w * gamma
+                    I = i * k_bits
+                    J = j * k_bits
+
+                    for k in range(k_bits):
+                        circ.cx(I + k, J + k)
+                        circ.x(J + k)
+                    Cn_U3_0theta0(circ, [J-1+ind for ind in range(1,k_bits)], J+k_bits-1, -wg)
+                    for k in reversed(range(k_bits)):
+                        circ.x(J + k)
+                        circ.cx(I + k, J + k)
+                    if usebarrier:
+                        circ.barrier()
+                    circ.x(I)
+                    circ.ccx(I,I+1,ind_a1)
+                    circ.ccx(J,J+1,ind_a2)
+                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                    circ.ccx(J,J+1,ind_a2)
+                    circ.ccx(I,I+1,ind_a1)
+                    circ.x(I)
+                    if usebarrier:
+                        circ.barrier()
+                    circ.x(J)
+                    circ.ccx(I,I+1,ind_a1)
+                    circ.ccx(J,J+1,ind_a2)
+                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                    circ.ccx(J,J+1,ind_a2)
+                    circ.ccx(I,I+1,ind_a1)
+                    circ.x(J)
+
+                    if usebarrier:
+                        circ.barrier()
+            elif k_cuts == 5:
+                for edge in G.edges():
+                    i = int(edge[0])
+                    j = int(edge[1])
+                    w = G[edge[0]][edge[1]]['weight']
+                    wg = w * gamma
+                    I = i * k_bits
+                    J = j * k_bits
+
+                    for k in range(k_bits):
+                        circ.cx(I + k, J + k)
+                        circ.x(J + k)
+                    Cn_U3_0theta0(circ, [J-1+ind for ind in range(1,k_bits)], J+k_bits-1, -wg)
+                    for k in reversed(range(k_bits)):
+                        circ.x(J + k)
+                        circ.cx(I + k, J + k)
+
+                    if usebarrier:
+                        circ.barrier()
+                    circ.x(I)
+                    circ.x(I+1)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.x(I+1)
+                    circ.x(I)
+                    if usebarrier:
+                        circ.barrier()
+                    circ.x(J)
+                    circ.x(J+1)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.x(J+1)
+                    circ.x(J)
+
+                    if usebarrier:
+                        circ.barrier()
+                    circ.x(I+1)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.x(I+1)
+                    if usebarrier:
+                        circ.barrier()
+                    circ.x(J+1)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.x(J+1)
+
+                    if usebarrier:
+                        circ.barrier()
+                    circ.x(I)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.x(I)
+                    if usebarrier:
+                        circ.barrier()
+                    circ.x(J)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.x(J)
+
+                    if usebarrier:
+                        circ.barrier()
+            elif k_cuts == 6:
+                for edge in G.edges():
+                    i = int(edge[0])
+                    j = int(edge[1])
+                    w = G[edge[0]][edge[1]]['weight']
+                    wg = w * gamma
+                    I = i * k_bits
+                    J = j * k_bits
+
+                    for k in range(k_bits):
+                        circ.cx(I + k, J + k)
+                        circ.x(J + k)
+                    Cn_U3_0theta0(circ, [J-1+ind for ind in range(1,k_bits)], J+k_bits-1, -wg)
+                    for k in reversed(range(k_bits)):
+                        circ.x(J + k)
+                        circ.cx(I + k, J + k)
+
+                    if usebarrier:
+                        circ.barrier()
+                    circ.x(I+1)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.x(I+1)
+                    if usebarrier:
+                        circ.barrier()
+                    circ.x(J+1)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.x(J+1)
+
+                    if usebarrier:
+                        circ.barrier()
+                    circ.x(I)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.x(I)
+                    if usebarrier:
+                        circ.barrier()
+                    circ.x(J)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.x(J)
+
+                    if usebarrier:
+                        circ.barrier()
+            elif k_cuts == 7:
+                for edge in G.edges():
+                    i = int(edge[0])
+                    j = int(edge[1])
+                    w = G[edge[0]][edge[1]]['weight']
+                    wg = w * gamma
+                    I = i * k_bits
+                    J = j * k_bits
+
+                    for k in range(k_bits):
+                        circ.cx(I + k, J + k)
+                        circ.x(J + k)
+                    Cn_U3_0theta0(circ, [J-1+ind for ind in range(1,k_bits)], J+k_bits-1, -wg)
+                    for k in reversed(range(k_bits)):
+                        circ.x(J + k)
+                        circ.cx(I + k, J + k)
+                    if usebarrier:
+                        circ.barrier()
+                    circ.x(I)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.x(I)
+                    if usebarrier:
+                        circ.barrier()
+                    circ.x(J)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                    circ.mcx([J,J+1,J+2],ind_a2)
+                    circ.mcx([I,I+1,I+2],ind_a1)
+                    circ.x(J)
+
+                    if usebarrier:
+                        circ.barrier()
+            else:
+                raise Exception("Circuit creation for k=",k_cuts," not implemented for version 1 (decomposed).")
+
+        circ.rx(-2 * beta, range(num_V * k_bits))
+        if usebarrier:
+            circ.barrier()
+    if version == 1 and not k_is_power_of_two:
+        circ.measure(q[:-2], c)
+    else:
+        circ.measure(q, c)
+    return circ
+
+
+def find_max_cut_brute_force(G, k_cuts):
     if (len(G) > 30):
         raise Exception("Too many solutions to enumerate.")
-
+    num_V = G.number_of_nodes()
+    k_bits = kBits_MaxKCut(k_cuts)
     maxcut = []
     maxcut_value = 0
-    N = len(G)
-    for i in range(2**N - 1):
-        x_bin = format(i, 'b').zfill(N)
-        x = [int(j) for j in x_bin]
-        c = 0
-        for u,v in G.edges():
-            c += G[u][v]['weight']/2*(1-(2*x[int(u)]-1)*(2*x[int(v)]-1))
-
-        if (c > maxcut_value):
-            maxcut = x
-            maxcut_value = c
-
+    for i in range((2*k_cuts) ** num_V):
+        binstring = "{0:b}".format(i).zfill(num_V * k_bits)
+        labels = binstringToLabels_MaxKCut(k_cuts, num_V, binstring)
+        max_bin = int(max(labels))
+        if max_bin>=k_cuts:
+            continue
+        cost = cost_MaxCut(labels, G, k_cuts)
+        if (cost >= maxcut_value):
+            maxcut = labels
+            maxcut_value = cost
+        if i % 1024 == 0:
+            print(i / (2*k_cuts) ** num_V * 100, "%", end='\r')
     return maxcut_value, maxcut
 
-def listSortedCosts_MaxCut(G):
+def listSortedCosts_MaxCut(G, k_cuts):
     costs={}
-    maximum=0
-    solutions=[]
     num_V = G.number_of_nodes()
-    for i in range(2**num_V):
-        binstring="{0:b}".format(i).zfill(num_V)
-        y=[int(i) for i in binstring]
-        costs[binstring]=cost_MaxCut(y,G)
+    k_bits = kBits_MaxKCut(k_cuts)
+    for i in range((2*k_cuts) ** num_V):
+        binstring="{0:b}".format(i).zfill(k_bits * num_V)
+        label_string = binstringToLabels_MaxKCut(k_cuts, num_V, binstring)
+        max_bin = int(max(label_string))
+        if max_bin>=k_cuts:
+            continue
+        costs[label_string]=cost_MaxCut(label_string, G, k_cuts)
     sortedcosts={k: v for k, v in sorted(costs.items(), key=lambda item: item[1])}
     return sortedcosts
 
-def costsHist_MaxCut(G):
+def costsHist_MaxCut(G, k_cuts):
     num_V = G.number_of_nodes()
-    costs=np.ones(2**num_V)
-    for i in range(2**num_V):
-        if i%1024*2*2*2==0:
-            print(i/2**num_V*100, "%", end='\r')
-        binstring="{0:b}".format(i).zfill(num_V)
-        y=[int(i) for i in binstring]
-        costs[i]=cost_MaxCut(y,G)
-    print("100%")
+    costs=np.ones((2*k_cuts) ** num_V)
+    k_bits = kBits_MaxKCut(k_cuts)
+    for i in range((2*k_cuts)**num_V):
+        binstring="{0:b}".format(i).zfill(num_V * k_bits)
+        label_string = binstringToLabels_MaxKCut(k_cuts, num_V, binstring)
+        costs[i]= cost_MaxCut(label_string,G, k_cuts)
     return costs
 
-def bins_comp_basis(data, G):
+
+def bins_comp_basis(data, G, k_cuts):
+    # NB! Not implemented for MaxKCut, only for Max-2-Cut
     max_solutions=[]
     num_V = G.number_of_nodes()
     bins_states = np.zeros(2**num_V)
@@ -103,14 +465,14 @@ def bins_comp_basis(data, G):
     num_solutions=0
     max_cost=0
     average_cost=0
-    for item, binary_rep in enumerate(data):
+    for item, binary_rep in find_max_cut_brute_force(data):
         integer_rep=int(str(binary_rep), 2)
         counts=data[str(binary_rep)]
         bins_states[integer_rep] += counts
         num_shots+=counts
         num_solutions+=1
         y=[int(i) for i in str(binary_rep)]
-        lc = cost_MaxCut(y,G)
+        lc = cost_MaxCut(y,G, k_cuts)
         if lc==max_cost:
             max_solutions.append(y)
         elif lc>max_cost:
@@ -120,16 +482,58 @@ def bins_comp_basis(data, G):
         average_cost+=lc*counts
     return bins_states, max_cost, average_cost/num_shots, max_solutions
 
+def measurementStatistics_MaxCut(experiment_results, G, k_cuts):
+    """
+    Calculates the expectation and variance of the cost function. If
+    results from multiple circuits are used as input, each circuit's
+    expectation value is returned.
+    :param experiment_results: Input on the form execute(...).result().results
+    :param G: The graph on which the cost function is defined.
+    :return: Lists of expectation values and variances
+    """
+    k_bits = kBits_MaxKCut(k_cuts)
+    cost_best = -np.inf
 
-def objective_function(params, G, backend, num_shots=8192):
+    expectations = []
+    variances = []
+    num_V = G.number_of_nodes()
+    for result in experiment_results:
+        n_shots = result.shots
+        counts = result.data.counts
+
+        E = 0
+        E2 = 0
+        for hexkey in list(counts.__dict__.keys()):
+            count = getattr(counts, hexkey)
+            binstring = "{0:b}".format(int(hexkey,0)).zfill(num_V*k_bits)
+            labels = binstringToLabels_MaxKCut(k_cuts,num_V,binstring)
+            cost = cost_MaxCut(labels,G, k_cuts)
+            cost_best = max(cost_best, cost)
+            E += cost*count/n_shots;
+            E2 += cost**2*count/n_shots;
+
+        if n_shots == 1:
+            v = 0
+        else:
+            v = (E2-E**2)*n_shots/(n_shots-1)
+        expectations.append(E)
+        variances.append(v)
+    return expectations, variances, cost_best
+
+def objective_function(params, G, backend, num_shots, k_cuts):
     """
     :return: minus the expectation value (in order to maximize MaxCut configuration)
-    NB! If a list of circuits are ran, only returns the expectation value of the first circuit.
+    NB! If a list of circuits are run, only returns the expectation value of the first circuit.
     """
-    qc = createCircuit_MaxCut(params, G, int(len(params)/2))
-    res_data = execute(qc, backend, shots=num_shots).result().results
-    E,_ = measurementStatistics_MaxCut(res_data, G)
+    qc = createCircuit_MaxCut(params, G, int(len(params)/2), k_cuts)
+    if backend.configuration().local:
+        job = execute(qc, backend, shots=num_shots)
+    else:
+        job = start_or_retrieve_job(name, backend, qc, options={'shots' : num_shots})
+    res_data = job.results
+    E,_,_ = measurementStatistics_MaxCut(res_data, G)
     return -E[0]
+
 
 def random_init(gamma_bounds,beta_bounds,depth):
     """
@@ -225,7 +629,8 @@ def COBYLAConstraints_MaxCut(gamma_bounds,beta_bounds,depth):
         constraints.append(upper_constraint)
     return constraints
 
-def optimize_random(K, G, backend, depth=1, decimals=0, num_shots=8192):
+
+def optimize_random(K, G, backend, k_cuts, depth=1, decimals=0, num_shots=8192):
     """
     :param K: # Random initializations (RIs)
     :return: Array of best params (on the format where the gammas and betas are intertwined),
@@ -237,18 +642,18 @@ def optimize_random(K, G, backend, depth=1, decimals=0, num_shots=8192):
         gamma_bounds, beta_bounds = parameterBounds_MaxCut(G, decimals=decimals)
         init_params = random_init(gamma_bounds, beta_bounds, depth)
         cons = COBYLAConstraints_MaxCut(gamma_bounds, beta_bounds, depth)
-        sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G, backend, num_shots), constraints=cons)
+        sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G, backend, num_shots, k_cuts), constraints=cons)
         params = sol.x
-        qc = createCircuit_MaxCut(params, G, depth)
+        qc = createCircuit_MaxCut(params, G, depth, k_cuts)
         temp_res_data = execute(qc, backend, shots=num_shots).result().results
-        [E],_ = measurementStatistics_MaxCut(temp_res_data, G)
+        [E],_,_ = measurementStatistics_MaxCut(temp_res_data, G)
         avg_list[i] = E
         if E>record:
             record = E
             record_params = params
     return record_params, record, np.average(avg_list)
 
-def scale_p(K, G, backend, depth=3, decimals=0, num_shots=8192):
+def scale_p(K, G, backend, k_cuts, depth=3, decimals=0, num_shots=8192):
     """
     :return: arrays of the p_values used, the corresponding array for the energy from the optimal
          energy config, and the average energy (for all the RIs at each p value)
@@ -257,8 +662,9 @@ def scale_p(K, G, backend, depth=3, decimals=0, num_shots=8192):
     avg_list = np.zeros(depth)
     p_list = np.arange(1, depth + 1, 1)
     for d in range(1, depth + 1):
-        temp, H_list[d-1], avg_list[d-1] = optimize_random(K, G, backend, d, decimals=decimals, num_shots=num_shots)
+        temp, H_list[d-1], avg_list[d-1] = optimize_random(K, G, backend, k_cuts, d, decimals=decimals, num_shots=num_shots)
     return p_list, H_list, avg_list
+
 
 
 
@@ -269,7 +675,7 @@ def INTERP_init(params_prev_step):
     :param params_prev_step: optimal parameters at level p
     :return:
     """
-    p = len(params_prev_step)
+    p = params_prev_step.shape[0]
     params_out_list = np.zeros(p+1)
     params_out_list[0] = params_prev_step[0]
     for i in range(2, p + 1):
@@ -278,7 +684,8 @@ def INTERP_init(params_prev_step):
     params_out_list[p] = params_prev_step[p-1]
     return params_out_list
 
-def optimize_INTERP(K, G, backend, depth, decimals=0, num_shots=8192):
+
+def optimize_INTERP(K, G, backend, depth, k_cuts, decimals=0, num_shots=8192):
     """
     Optimizes the params using the INTERP heuristic
     :return: Array of the optimal parameters, and the correponding energy value
@@ -288,7 +695,7 @@ def optimize_INTERP(K, G, backend, depth, decimals=0, num_shots=8192):
         init_params = np.zeros(2)
         gamma_bounds, beta_bounds = parameterBounds_MaxCut(G, decimals=decimals)
         cons = COBYLAConstraints_MaxCut(gamma_bounds, beta_bounds, 1)
-        sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G, backend, num_shots), constraints=cons)
+        sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G, backend, num_shots, k_cuts), constraints=cons)
         params = sol.x
         init_gamma = params[0:1]
         init_beta = params[1:2]
@@ -299,67 +706,21 @@ def optimize_INTERP(K, G, backend, depth, decimals=0, num_shots=8192):
             init_params[0::2] = init_gamma
             init_params[1::2] = init_beta
             cons = COBYLAConstraints_MaxCut(gamma_bounds, beta_bounds, p)
-            sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G, backend, num_shots), constraints=cons)
+            sol = minimize(objective_function, x0=init_params, method='COBYLA', args=(G, backend, num_shots, k_cuts), constraints=cons)
             params = sol.x
             init_gamma = params[0::2]
             init_beta = params[1::2]
-        qc = createCircuit_MaxCut(params, G, depth)
+        qc = createCircuit_MaxCut(params, G, depth, k_cuts)
         temp_res_data = execute(qc, backend, shots=num_shots).result().results
-        [E],_ = measurementStatistics_MaxCut(temp_res_data, G)
+        [E],_,_ = measurementStatistics_MaxCut(temp_res_data, G)
         if E>record:
             record = E
             record_params = params
     return record_params, record
 
 
-def addWeights_MaxCut(G, decimals=0):
-    """
-    Adds weights G distributed from [0,1], rounded up to a number of decimals.
-    Does not return anything, but modifies the input graph.
-    :param G: The graph to modify.
-    :param decimals: The number of decimals to use.
-    """
-    scaling_factor = np.power(10,decimals)
-    for i,j in G.edges():
-        w = np.ceil(np.random.uniform()*scaling_factor)/scaling_factor
-        G.add_edge(i,j,weight=w)
 
-def measurementStatistics_MaxCut(experiment_results, G):
-    """
-    Calculates the expectation and variance of the cost function. If
-    results from multiple circuits are used as input, each circuit's
-    expectation value are returned.
-    :param experiment_results: Input on the form execute(...).result().results
-    :param G: The graph on which the cost function is defined.
-    :return: Lists of expectation values and variances
-    """
-
-    expectations = []
-    variances = []
-    num_qubits = G.number_of_nodes()
-    for result in experiment_results:
-        n_shots = result.shots
-        counts = result.data.counts
-
-        E = 0
-        E2 = 0
-        for hexkey in list(counts.__dict__.keys()):
-            count = getattr(counts, hexkey)
-            binstring = "{0:b}".format(int(hexkey,0)).zfill(num_qubits)
-            binlist = [int(i) for i in binstring]
-            cost = cost_MaxCut(binlist,G)
-            E += cost*count/n_shots;
-            E2 += cost**2*count/n_shots;
-
-        if n_shots == 1:
-            v = 0
-        else:
-            v = (E2-E**2)*n_shots/(n_shots-1)
-        expectations.append(E)
-        variances.append(v)
-    return expectations, variances
-
-def sampleUntilPrecision_MaxCut(circuit,G,backend,noisemodel,min_n_shots,max_n_shots,E_atol,E_rtol,dv_rtol,confidence_index):
+def sampleUntilPrecision_MaxCut(circuit,G,backend,noisemodel,min_n_shots,max_n_shots,E_atol,E_rtol,dv_rtol,confidence_index, k_cuts):
     """
     Samples from the circuit and calculates the cost function until the specified
     error tolerances are satisfied. This may include several repetitions, either if
@@ -377,6 +738,7 @@ def sampleUntilPrecision_MaxCut(circuit,G,backend,noisemodel,min_n_shots,max_n_s
     :param E_rtol: Relative error tolerance for the expectation value.
     :param dv_rtol: Relative change in variance tolerated without repeating.
     :param confidence_index: The degree of confidence required.
+    :param k_cuts: # cuts
     :return: Lists of expectation values, variances and shots each repetition.
     """
 
@@ -395,7 +757,7 @@ def sampleUntilPrecision_MaxCut(circuit,G,backend,noisemodel,min_n_shots,max_n_s
         n_cur = n_req - n_tot
         experiment = execute(circuit, backend, noise_model=noisemodel, shots=n_cur)
 
-        [E_cur],[v_cur] = measurementStatistics_MaxCut(experiment.result().results,G)
+        [E_cur],[v_cur],_ = measurementStatistics_MaxCut(experiment.result().results, G, k_cuts)
         E_tot = (n_tot*E_tot + n_cur*E_cur)/(n_tot+n_cur)
         v_tot = ((n_tot-1)*v_tot + (n_cur-1)*v_cur)/(n_tot+n_cur-1)
         n_tot = n_req
@@ -411,3 +773,291 @@ def sampleUntilPrecision_MaxCut(circuit,G,backend,noisemodel,min_n_shots,max_n_s
             n_req = max_n_shots
 
     return E_list,v_list,n_list
+
+global g_it
+global g_values
+global g_bestvalues
+global g_gammabeta
+
+def getval(gammabeta, backend, G, k_cuts, depth=1, version=1, noisemodel=None, shots=1024*2*2*2, name=''):
+    global g_it, g_values, g_bestvalues, g_gammabeta
+    g_it+=1
+
+    circuit = createCircuit_MaxCut(gammabeta, G, depth, k_cuts, version=version, usebarrier=False, name=name)
+    if backend.configuration().local:
+        job = execute(circuit, backend=backend, noise_model=noisemodel, shots=shots)
+    else:
+        job = start_or_retrieve_job(name+"_"+str(g_it), backend, circuit, options={'shots' : shots})
+
+    val,_,bval = measurementStatistics_MaxCut(job.result().results, G, k_cuts=k_cuts)
+    g_values[str(g_it)] = val[0]
+    g_bestvalues[str(g_it)] = bval
+    g_gammabeta[str(g_it)] = gammabeta
+    return -val[0]
+
+def runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod='COBYLA', circuit_version=1, shots=1024*2*2*2, name='', rerun=False, maxdepth=3):
+    if k_cuts<2:
+        raise Exception("k_cuts must be at least 2")
+    gammabetas = {}
+    E = {}
+    best = {}
+### ----------------------------
+################
+    depth=1
+    print("depth =",depth)
+################
+### ----------------------------
+    gamma_grid = np.linspace(0, gamma_max, gamma_n)
+    beta_grid = np.linspace(0, beta_max, beta_n)
+    Elandscapefile="../data/sample_graphs/"+name+"_Elandscape.npy"
+    if not rerun and os.path.isfile(Elandscapefile):
+        Elandscape = np.load(Elandscapefile)
+    else:
+        if backend.configuration().local:
+            circuits=[]
+            for beta in beta_grid:
+                for gamma in gamma_grid:
+                    circuits.append(createCircuit_MaxCut(np.array((gamma,beta)), G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"_"+str(beta_n)+"_"+str(gamma_n)))
+            job = execute(circuits, backend, shots=shots)
+            El,_,_ = measurementStatistics_MaxCut(job.result().results,G,k_cuts=k_cuts)
+            Elandscape = -np.array(El)
+        else:
+            Elandscape = np.zeros((beta_n, gamma_n))
+            b=-1
+            for beta in beta_grid:
+                b+=1
+                g=-1
+                for gamma in gamma_grid:
+                    g+=1
+                    circuit = createCircuit_MaxCut(np.array((gamma,beta)), G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"_"+str(b)+"_"+str(g))
+                    job = start_or_retrieve_job(name+"_"+str(b)+"_"+str(g), backend, circuit, options={'shots' : shots})
+                    e,_,_ = measurementStatistics_MaxCut(job.result().results,G,k_cuts=k_cuts)
+                    Elandscape[b,g] = -e[0]
+        np.save(Elandscapefile, Elandscape)
+
+    ### reshape and find parameters that achieved minimal energy
+    if backend.configuration().local:
+        Elandscape = np.array(Elandscape).reshape(beta_n, gamma_n)
+    ind_Emin = np.unravel_index(np.argmin(Elandscape, axis=None), Elandscape.shape)
+    x0=np.array((gamma_grid[ind_Emin[1]], beta_grid[ind_Emin[0]]))
+
+    ### local optimization
+    #cons = COBYLAConstraints_MaxCut([0,gamma_max], [0,beta_max], depth)
+    global g_it, g_values, g_bestvalues, g_gammabeta
+    g_it=0
+    g_values={}
+    g_bestvalues={}
+    g_gammabeta={}
+
+    for rep in range(5):
+        print("depth =",depth, "rep =", rep)
+        out = minimize(getval, x0=x0, method=optmethod, args=(backend, G, k_cuts, depth, circuit_version, None, shots, name+"_opt_"+str(depth)), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
+    ### pick the best value along the path
+    ind = max(g_values, key=g_values.get)
+    gammabetas['x0_d'+str(depth)] = x0.copy()
+    gammabetas['xL_d'+str(depth)] = g_gammabeta[ind].copy()
+    E[''+str(depth)] = g_values[ind]
+    best[''+str(depth)] = g_bestvalues[ind]
+
+    if maxdepth>=2:
+### ----------------------------
+################
+        depth=2
+        print("depth =",depth)
+################
+### ----------------------------
+
+        ### interpolation heuristic
+        inter0 = INTERP_init(np.array((gammabetas['xL_d'+str(depth-1)][::2],)))
+        inter1 = INTERP_init(np.array((gammabetas['xL_d'+str(depth-1)][1::2],)))
+        x0 = np.array((inter0[0], inter1[0], inter0[1], inter1[1]))
+
+        ### local optimization
+        #cons = COBYLAConstraints_MaxCut([0,gamma_max], [0,beta_max], depth)
+        g_it=0
+        g_gammabeta={}
+        g_values={}
+        g_bestvalues={}
+
+        for rep in range(5):
+            print("depth =",depth, "rep =", rep)
+            out = minimize(getval, x0=x0, method=optmethod, args=(backend, G, k_cuts, depth, circuit_version, None, shots, name+"_opt_"+str(depth)), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
+        ### pick the best value along the path
+        ind = max(g_values, key=g_values.get)
+        gammabetas['x0_d'+str(depth)] = x0.copy()
+        gammabetas['xL_d'+str(depth)] = g_gammabeta[ind].copy()
+        E[''+str(depth)] = g_values[ind]
+        best[''+str(depth)] = g_bestvalues[ind]
+
+    if maxdepth>=3:
+### ----------------------------
+################
+        depth=3
+        print("depth =",depth)
+################
+### ----------------------------
+
+        ### interpolation heuristic
+        inter0 = INTERP_init(gammabetas['xL_d'+str(depth-1)][::2])
+        inter1 = INTERP_init(gammabetas['xL_d'+str(depth-1)][1::2])
+        x0 = np.array((inter0[0], inter1[0], inter0[1], inter1[1], inter0[2], inter1[2]))
+
+        ### local optimization
+        #cons = COBYLAConstraints_MaxCut([0,gamma_max], [0,beta_max], depth)
+        g_it=0
+        g_gammabeta={}
+        g_values={}
+        g_bestvalues={}
+
+        for rep in range(5):
+            print("depth =",depth, "rep =", rep)
+            out = minimize(getval, x0=x0, method=optmethod, args=(backend, G, k_cuts, depth, circuit_version, None, shots, name+"_opt_"+str(depth)), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
+        ### pick the best value along the path
+        ind = max(g_values, key=g_values.get)
+        gammabetas['x0_d'+str(depth)] = x0.copy()
+        gammabetas['xL_d'+str(depth)] = g_gammabeta[ind].copy()
+        E[''+str(depth)] = g_values[ind]
+        best[''+str(depth)] = g_bestvalues[ind]
+
+    if maxdepth>=4:
+### ----------------------------
+################
+        depth=4
+        print("depth =",depth)
+################
+### ----------------------------
+
+        ### interpolation heuristic
+        inter0 = INTERP_init(gammabetas['xL_d'+str(depth-1)][::2])
+        inter1 = INTERP_init(gammabetas['xL_d'+str(depth-1)][1::2])
+        x0 = np.array((inter0[0], inter1[0], inter0[1], inter1[1], inter0[2], inter1[2], inter0[3], inter1[3]))
+
+        ### local optimization
+        #cons = COBYLAConstraints_MaxCut([0,gamma_max], [0,beta_max], depth)
+        g_it=0
+        g_gammabeta={}
+        g_values={}
+        g_bestvalues={}
+
+        for rep in range(5):
+            print("depth =",depth, "rep =", rep)
+            out = minimize(getval, x0=x0, method=optmethod, args=(backend, G, k_cuts, depth, circuit_version, None, shots, name+"_opt_"+str(depth)), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
+        ### pick the best value along the path
+        ind = max(g_values, key=g_values.get)
+        gammabetas['x0_d'+str(depth)] = x0.copy()
+        gammabetas['xL_d'+str(depth)] = g_gammabeta[ind].copy()
+        E[''+str(depth)] = g_values[ind]
+        best[''+str(depth)] = g_bestvalues[ind]
+
+    return Elandscape, gammabetas, E, best
+
+def getStatistics(G, k_cuts, backend, gammabetas, circuit_version=1, shots=1024*2*2*2, maxdepth=3, name=''):
+
+    #num_shots = [i for i in range(2,2**6+1)]
+    #num_shots.append(2**7)
+    #num_shots.append(2**8)
+    #num_shots.append(2**9)
+    #num_shots.append(2**10)
+    #num_shots.append(2**11)
+    #num_shots.append(2**12)
+    #num_shots.append(2**13)
+    ##num_shots.append(2**14)
+    num_shots=np.array([2**13,])
+
+    av_max_cost = {}
+    best_cost = {}
+    distribution = {}
+
+### ----------------------------
+################
+    depth=1
+    print("depth =",depth)
+################
+### ----------------------------
+    av_max_cost[str(depth)] = []
+    best_cost[str(depth)] = []
+
+    x = gammabetas['xL_d'+str(depth)]
+    for ns in num_shots:
+        circ = createCircuit_MaxCut(x, G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"d"+str(d))
+        if backend.configuration().local:
+            job = execute(circ, backend, shots=ns)
+        else:
+            job = start_or_retrieve_job(name+str(depth), backend, circ, options={'shots' : ns})
+        mc,_,bc = measurementStatistics_MaxCut(job.result().results, G, k_cuts)
+        av_max_cost[str(depth)].append(mc)
+        best_cost[str(depth)].append(bc)
+
+    distribution[str(depth)] = job.result().get_counts(circ)
+
+    if maxdepth>=2:
+### ----------------------------
+################
+        depth=2
+        print("depth =",depth)
+################
+### ----------------------------
+        av_max_cost[str(depth)] = []
+        best_cost[str(depth)] = []
+
+        x = gammabetas['xL_d'+str(depth)]
+        for ns in num_shots:
+            circ = createCircuit_MaxCut(x, G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"d"+str(d))
+            if backend.configuration().local:
+                job = execute(circ, backend, shots=ns)
+            else:
+                job = start_or_retrieve_job(name+str(depth), backend, circ, options={'shots' : ns})
+            mc,_,bc = measurementStatistics_MaxCut(job.result().results, G, k_cuts)
+            av_max_cost[str(depth)].append(mc)
+            best_cost[str(depth)].append(bc)
+
+        distribution[str(depth)] = job.result().get_counts(circ)
+
+    if maxdepth>=3:
+### ----------------------------
+################
+        depth=3
+        print("depth =",depth)
+################
+### ----------------------------
+        av_max_cost[str(depth)] = []
+        best_cost[str(depth)] = []
+
+        x = gammabetas['xL_d'+str(depth)]
+        for ns in num_shots:
+            circ = createCircuit_MaxCut(x, G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"d"+str(d))
+            if backend.configuration().local:
+                job = execute(circ, backend, shots=ns)
+            else:
+                job = start_or_retrieve_job(name+str(depth), backend, circ, options={'shots' : ns})
+            mc,_,bc = measurementStatistics_MaxCut(job.result().results, G, k_cuts)
+            av_max_cost[str(depth)].append(mc)
+            best_cost[str(depth)].append(bc)
+
+        distribution[str(depth)] = job.result().get_counts(circ)
+
+    if maxdepth>=4:
+### ----------------------------
+################
+        depth=4
+        print("depth =",depth)
+################
+### ----------------------------
+        av_max_cost[str(depth)] = []
+        best_cost[str(depth)] = []
+
+        x = gammabetas['xL_d'+str(depth)]
+        for ns in num_shots:
+            circ = createCircuit_MaxCut(x, G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"d"+str(d))
+            if backend.configuration().local:
+                job = execute(circ, backend, shots=ns)
+            else:
+                job = start_or_retrieve_job(name+str(depth), backend, circ, options={'shots' : ns})
+            mc,_,bc = measurementStatistics_MaxCut(job.result().results, G, k_cuts)
+            av_max_cost[str(depth)].append(mc)
+            best_cost[str(depth)].append(bc)
+
+        distribution[str(depth)] = job.result().get_counts(circ)
+
+    return num_shots, av_max_cost, best_cost, distribution
+
