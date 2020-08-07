@@ -413,7 +413,7 @@ def sampleUntilPrecision_MaxCut(circuit,G,backend,noisemodel,min_n_shots,max_n_s
     return E_list,v_list,n_list
 
 
-def binstringToLabels_MaxKCut(k_cuts,num_V,binstring):
+def binstringToLabels_MaxKCut(k_cuts, num_V, binstring):
     k_bits = kBits_MaxKCut(k_cuts)
     label_list = [int(binstring[j*k_bits:(j+1)*k_bits],2) for j in range(num_V)]
     label_string = ''
@@ -422,12 +422,7 @@ def binstringToLabels_MaxKCut(k_cuts,num_V,binstring):
     return label_string
 
 def kBits_MaxKCut(k_cuts):
-    k_bits = np.log2(k_cuts)
-    if np.ceil(k_bits) != np.floor(k_bits):
-        print('Error: invalid k_cuts: %d' % k_cuts)
-        return None
-    k_bits = int(k_bits)
-    return k_bits
+    return int(np.ceil(np.log2(k_cuts)))
 
 def createCircuit_MaxKCut(k_cuts,params,G,depth,version=1, applyX=[], usebarrier=False,brute_force=False):
     k_bits = kBits_MaxKCut(k_cuts)
