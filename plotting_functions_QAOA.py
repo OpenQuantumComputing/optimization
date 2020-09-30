@@ -2,18 +2,17 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from qaoa import*
 
-def gamma_beta_func_of_p(p, backend, M=5, K = 20, heuristic=False, decimals=0, num_shots=8192):
+def gamma_beta_func_of_p(p, backend, M=5, K = 20, heuristic=False, decimals=0, num_shots=8192, k_cuts=2):
     fig, (ax1, ax2)= plt.subplots(nrows=2, ncols=1, sharex=True)
     for i in range(M):
         G = nx.random_regular_graph(3, 6)
         addWeights_MaxCut(G, decimals=decimals)
-        costs = costsHist_MaxCut(G)
-        MAX_COST = max(costs)
+        MAX_COST, max_config = find_max_cut_brute_force(G, k_cuts)
         print("Max cost: ", MAX_COST)
         if heuristic:
-            params, E = optimize_INTERP(K, G, backend, p, decimals=decimals, num_shots=num_shots)
+            params, E = optimize_INTERP(K, G, backend, p, decimals=decimals, num_shots=num_shots, k_cuts=k_cuts)
         else:
-            params, E, temp = optimize_random(K, G, backend, p, decimals=decimals, num_shots=num_shots)
+            params, E, temp = optimize_random(K, G, backend, p, decimals=decimals, num_shots=num_shots, k_cuts=k_cuts)
         r = E/MAX_COST
         print("Best approximation ratio, r = ", r)
         p_list = np.arange(1, p + 1, 1)
@@ -33,18 +32,18 @@ def gamma_beta_func_of_p(p, backend, M=5, K = 20, heuristic=False, decimals=0, n
 
 
 
-def compare_methods(K, G, backend, p_max, decimals=0, num_shots=8192):
+def compare_methods(K, G, backend, p_max, decimals=0, num_shots=8192, k_cuts=2):
     """
     Uses K tries to find the best approx ratio for both INTERP and RI. Does this for all integer p, 1<= p <= p_max
     """
-    costs = costsHist_MaxCut(G)
+    costs = costsHist_MaxCut(G, k_cuts)
     MAX_COST = max(costs)
     p_list = np.arange(1, p_max + 1, 1)
     E_heur_list = np.zeros(len(p_list))
     E_ran_list = np.zeros(len(p_list))
     for i in range(len(p_list)):
-        params_heur, E_heur_list[i] = optimize_INTERP(K, G, backend, p_list[i], decimals=decimals, num_shots=num_shots)
-        params_ran, E_ran_list[i], temp = optimize_random(K, G, backend, p_list[i], decimals=decimals, num_shots=num_shots)
+        params_heur, E_heur_list[i] = optimize_INTERP(K, G, backend, p_list[i], decimals=decimals, num_shots=num_shots, k_cuts=k_cuts)
+        params_ran, E_ran_list[i], temp = optimize_random(K, G, backend, p_list[i], decimals=decimals, num_shots=num_shots, k_cuts=k_cuts)
     plt.plot(p_list, E_ran_list/MAX_COST, "-o", label="RI")
     plt.plot(p_list, E_heur_list/MAX_COST, "-o", label="INTERP")
     plt.xlabel(r"$p$")
