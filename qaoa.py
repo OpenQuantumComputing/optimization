@@ -442,22 +442,29 @@ def listSortedCosts_MaxCut(G, k_cuts):
         if max_bin>=k_cuts:
             continue
         costs[label_string]=cost_MaxCut(label_string, G, k_cuts)
+        if i % 1024 == 0:
+            print(i / (2*k_cuts) ** num_V * 100, "%", end='\r')
     sortedcosts={k: v for k, v in sorted(costs.items(), key=lambda item: item[1])}
     return sortedcosts
 
 def costsHist_MaxCut(G, k_cuts):
+    if k_cuts!=2:
+        raise Exception("k_cuts must be equal to 2")
     num_V = G.number_of_nodes()
-    costs=np.ones((2*k_cuts) ** num_V)
-    k_bits = kBits_MaxKCut(k_cuts)
-    for i in range((2*k_cuts)**num_V):
-        binstring="{0:b}".format(i).zfill(num_V * k_bits)
-        label_string = binstringToLabels_MaxKCut(k_cuts, num_V, binstring)
-        costs[i]= cost_MaxCut(label_string,G, k_cuts)
+    costs=np.ones(2**num_V)
+    for i in range(2**num_V):
+        if i%1024*2*2*2==0:
+            print(i/2**num_V*100, "%", end='\r')
+        binstring="{0:b}".format(i).zfill(num_V)
+        y=[int(i) for i in binstring]
+        costs[i]=cost_MaxCut(y,G, k_cuts)
+    print("100%")
     return costs
 
 
 def bins_comp_basis(data, G, k_cuts):
-    # NB! Not implemented for MaxKCut, only for Max-2-Cut
+    if k_cuts != 2:
+        raise Exception("bins_comp_basis not implemented for k_cuts!=2")
     max_solutions=[]
     num_V = G.number_of_nodes()
     bins_states = np.zeros(2**num_V)
@@ -465,7 +472,7 @@ def bins_comp_basis(data, G, k_cuts):
     num_solutions=0
     max_cost=0
     average_cost=0
-    for item, binary_rep in find_max_cut_brute_force(data):
+    for item, binary_rep in enumerate(data):
         integer_rep=int(str(binary_rep), 2)
         counts=data[str(binary_rep)]
         bins_states[integer_rep] += counts
@@ -482,7 +489,7 @@ def bins_comp_basis(data, G, k_cuts):
         average_cost+=lc*counts
     return bins_states, max_cost, average_cost/num_shots, max_solutions
 
-def measurementStatistics_MaxCut(experiment_results, G, k_cuts):
+def measurementStatistics_MaxCut(experiment_results, options=None):
     """
     Calculates the expectation and variance of the cost function. If
     results from multiple circuits are used as input, each circuit's
@@ -491,6 +498,12 @@ def measurementStatistics_MaxCut(experiment_results, G, k_cuts):
     :param G: The graph on which the cost function is defined.
     :return: Lists of expectation values and variances
     """
+
+    G = options.get('G', None)
+    k_cuts = options.get('k_cuts', None)
+    if G == None or k_cuts == False:
+        raise Exception("Please specify options G and k_cuts")
+
     k_bits = kBits_MaxKCut(k_cuts)
     cost_best = -np.inf
 
@@ -503,8 +516,8 @@ def measurementStatistics_MaxCut(experiment_results, G, k_cuts):
 
         E = 0
         E2 = 0
-        for hexkey in list(counts.__dict__.keys()):
-            count = getattr(counts, hexkey)
+        for hexkey in list(counts.keys()):
+            count = counts[hexkey]
             binstring = "{0:b}".format(int(hexkey,0)).zfill(num_V*k_bits)
             labels = binstringToLabels_MaxKCut(k_cuts,num_V,binstring)
             cost = cost_MaxCut(labels,G, k_cuts)
@@ -531,7 +544,7 @@ def objective_function(params, G, backend, num_shots, k_cuts):
     else:
         job = start_or_retrieve_job(name, backend, qc, options={'shots' : num_shots})
     res_data = job.results
-    E,_,_ = measurementStatistics_MaxCut(res_data, G)
+    E,_,_ = measurementStatistics_MaxCut(res_data, options={'G' : G, 'k_cuts' : k_cuts})
     return -E[0]
 
 
@@ -646,7 +659,7 @@ def optimize_random(K, G, backend, k_cuts, depth=1, decimals=0, num_shots=8192):
         params = sol.x
         qc = createCircuit_MaxCut(params, G, depth, k_cuts)
         temp_res_data = execute(qc, backend, shots=num_shots).result().results
-        [E],_,_ = measurementStatistics_MaxCut(temp_res_data, G)
+        [E],_,_ = measurementStatistics_MaxCut(temp_res_data, options={'G' : G, 'k_cuts' : k_cuts})
         avg_list[i] = E
         if E>record:
             record = E
@@ -712,7 +725,7 @@ def optimize_INTERP(K, G, backend, depth, k_cuts, decimals=0, num_shots=8192):
             init_beta = params[1::2]
         qc = createCircuit_MaxCut(params, G, depth, k_cuts)
         temp_res_data = execute(qc, backend, shots=num_shots).result().results
-        [E],_,_ = measurementStatistics_MaxCut(temp_res_data, G)
+        [E],_,_ = measurementStatistics_MaxCut(temp_res_data, options={'G' : G, 'k_cuts' : k_cuts})
         if E>record:
             record = E
             record_params = params
@@ -720,7 +733,7 @@ def optimize_INTERP(K, G, backend, depth, k_cuts, decimals=0, num_shots=8192):
 
 
 
-def sampleUntilPrecision_MaxCut(circuit,G,backend,noisemodel,min_n_shots,max_n_shots,E_atol,E_rtol,dv_rtol,confidence_index, k_cuts):
+def sampleUntilPrecision(circuit,backend,noisemodel,min_n_shots,max_n_shots,E_atol,E_rtol,dv_rtol,confidence_index, measurement_fun, measurement_vars=None):
     """
     Samples from the circuit and calculates the cost function until the specified
     error tolerances are satisfied. This may include several repetitions, either if
@@ -729,7 +742,6 @@ def sampleUntilPrecision_MaxCut(circuit,G,backend,noisemodel,min_n_shots,max_n_s
     estimate was inaccurate.
 
     :param circuit: The circuit that will be sampled.
-    :param G: The graph on which the cost function is defined.
     :param backend: The backend that will execute the circuit.
     :param noisemodel: The noisemodel to use, e.g. when simulating.
     :param min_n_shots: The minimum number of shots to be executed.
@@ -738,7 +750,6 @@ def sampleUntilPrecision_MaxCut(circuit,G,backend,noisemodel,min_n_shots,max_n_s
     :param E_rtol: Relative error tolerance for the expectation value.
     :param dv_rtol: Relative change in variance tolerated without repeating.
     :param confidence_index: The degree of confidence required.
-    :param k_cuts: # cuts
     :return: Lists of expectation values, variances and shots each repetition.
     """
 
@@ -757,7 +768,7 @@ def sampleUntilPrecision_MaxCut(circuit,G,backend,noisemodel,min_n_shots,max_n_s
         n_cur = n_req - n_tot
         experiment = execute(circuit, backend, noise_model=noisemodel, shots=n_cur)
 
-        [E_cur],[v_cur],_ = measurementStatistics_MaxCut(experiment.result().results, G, k_cuts)
+        [E_cur],[v_cur],_ = measurement_fun(experiment.result().results, options=measurement_vars)
         E_tot = (n_tot*E_tot + n_cur*E_cur)/(n_tot+n_cur)
         v_tot = ((n_tot-1)*v_tot + (n_cur-1)*v_cur)/(n_tot+n_cur-1)
         n_tot = n_req
@@ -789,7 +800,7 @@ def getval(gammabeta, backend, G, k_cuts, depth=1, version=1, noisemodel=None, s
     else:
         job = start_or_retrieve_job(name+"_"+str(g_it), backend, circuit, options={'shots' : shots})
 
-    val,_,bval = measurementStatistics_MaxCut(job.result().results, G, k_cuts=k_cuts)
+    val,_,bval = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
     g_values[str(g_it)] = val[0]
     g_bestvalues[str(g_it)] = bval
     g_gammabeta[str(g_it)] = gammabeta
@@ -819,7 +830,7 @@ def runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=
                 for gamma in gamma_grid:
                     circuits.append(createCircuit_MaxCut(np.array((gamma,beta)), G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"_"+str(beta_n)+"_"+str(gamma_n)))
             job = execute(circuits, backend, shots=shots)
-            El,_,_ = measurementStatistics_MaxCut(job.result().results,G,k_cuts=k_cuts)
+            El,_,_ = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
             Elandscape = -np.array(El)
         else:
             Elandscape = np.zeros((beta_n, gamma_n))
@@ -831,7 +842,7 @@ def runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=
                     g+=1
                     circuit = createCircuit_MaxCut(np.array((gamma,beta)), G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"_"+str(b)+"_"+str(g))
                     job = start_or_retrieve_job(name+"_"+str(b)+"_"+str(g), backend, circuit, options={'shots' : shots})
-                    e,_,_ = measurementStatistics_MaxCut(job.result().results,G,k_cuts=k_cuts)
+                    e,_,_ = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
                     Elandscape[b,g] = -e[0]
         np.save(Elandscapefile, Elandscape)
 
@@ -984,7 +995,7 @@ def getStatistics(G, k_cuts, backend, gammabetas, circuit_version=1, shots=1024*
             job = execute(circ, backend, shots=ns)
         else:
             job = start_or_retrieve_job(name+str(depth), backend, circ, options={'shots' : ns})
-        mc,_,bc = measurementStatistics_MaxCut(job.result().results, G, k_cuts)
+        mc,_,bc = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
         av_max_cost[str(depth)].append(mc)
         best_cost[str(depth)].append(bc)
 
@@ -1007,7 +1018,7 @@ def getStatistics(G, k_cuts, backend, gammabetas, circuit_version=1, shots=1024*
                 job = execute(circ, backend, shots=ns)
             else:
                 job = start_or_retrieve_job(name+str(depth), backend, circ, options={'shots' : ns})
-            mc,_,bc = measurementStatistics_MaxCut(job.result().results, G, k_cuts)
+            mc,_,bc = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
             av_max_cost[str(depth)].append(mc)
             best_cost[str(depth)].append(bc)
 
@@ -1030,7 +1041,7 @@ def getStatistics(G, k_cuts, backend, gammabetas, circuit_version=1, shots=1024*
                 job = execute(circ, backend, shots=ns)
             else:
                 job = start_or_retrieve_job(name+str(depth), backend, circ, options={'shots' : ns})
-            mc,_,bc = measurementStatistics_MaxCut(job.result().results, G, k_cuts)
+            mc,_,bc = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
             av_max_cost[str(depth)].append(mc)
             best_cost[str(depth)].append(bc)
 
@@ -1053,7 +1064,7 @@ def getStatistics(G, k_cuts, backend, gammabetas, circuit_version=1, shots=1024*
                 job = execute(circ, backend, shots=ns)
             else:
                 job = start_or_retrieve_job(name+str(depth), backend, circ, options={'shots' : ns})
-            mc,_,bc = measurementStatistics_MaxCut(job.result().results, G, k_cuts)
+            mc,_,bc = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
             av_max_cost[str(depth)].append(mc)
             best_cost[str(depth)].append(bc)
 
