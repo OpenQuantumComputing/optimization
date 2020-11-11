@@ -16,7 +16,7 @@ import sys
 sys.path.append('../')
 
 from qiskit_utilities.utilities import *
-from classical_maxkcut_solver import *
+#from classical_maxkcut_solver import *
 
 
 from matplotlib import rc
@@ -46,9 +46,8 @@ gamma_n = 24
 beta_max = np.pi/2
 gamma_max = np.pi
 optmethod='Nelder-Mead'
-circuit_version=2
 shots=1024*2*2*2
-rerun=False
+rerun=True
 
 maxdepth=3
 
@@ -57,14 +56,18 @@ depths=range(1,maxdepth+1)
 outstr=""
 outstrbest=""
 
-max_val = np.array([12, 16, 16, 16, 16, 16, 16]) 
+max_val = np.array([12, 16]) 
 
+backend = provider.get_backend('ibmq_qasm_simulator')
+#backend = Aer.get_backend('qasm_simulator')
 
-for k_cuts in [2,3,4,5,6,7,8]:
-    if k_cuts<=4:
-        backend = Aer.get_backend('qasm_simulator')
-    else:
-        backend = provider.get_backend('ibmq_qasm_simulator')
+alpha=None
+if alpha == None:
+    circuit_version=2
+else:
+    circuit_version=1
+
+for k_cuts in [2,3]:
 
     #max_val, label = find_max_cut_brute_force(G, k_cuts)
     #max_val, label = classical_maxkcut_solver(G, k_cuts)
@@ -72,8 +75,8 @@ for k_cuts in [2,3,4,5,6,7,8]:
     outstr+=str(k_cuts)
     outstrbest+=str(k_cuts)
     print(" k=", k_cuts)
-    name="ER10uw"+str(gamma_n)+"x"+str(beta_n)+"_v"+str(circuit_version)+"_k"+str(k_cuts)
-    Elandscape, gammabetas, E, best =  runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=optmethod, circuit_version=circuit_version, shots=shots, name=name, rerun=rerun)
+    name="ER10uw"+str(gamma_n)+"x"+str(beta_n)+"_v"+str(circuit_version)+"_k"+str(k_cuts)+"_onehot_alpha_"+str(alpha)
+    Elandscape, gammabetas, E, best =  runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=optmethod, circuit_version=circuit_version, shots=shots, name=name, rerun=rerun, maxdepth=maxdepth, onehot=True, onehot_alpha=alpha)
 
     shiftg=gamma_max/(2*gamma_n)
     shiftb=beta_max/(2*beta_n)
@@ -134,54 +137,54 @@ for k_cuts in [2,3,4,5,6,7,8]:
     #pl.savefig("pics/"+name+"_bestE"+str(depth)+".png")
     #pl.close()
 
-    pl.figure(figsize=(20,10))
-    pl.clf()
-    for d in depths:
-        if d==1:
-            col='r'
-        elif d==2:
-            col='g'
-        else:
-            col='b'
-        sty=''
-        if not d==1:
-            sty=':'
-        pl.plot(np.arange(1,d+1),gammabetas['x0_d'+str(d)][::2],'x'+col+sty,label='depth='+str(d))
-        sty=''
-        if not d==1:
-            sty='-'
-        pl.plot(np.arange(1,d+1),gammabetas['xL_d'+str(d)][::2],'o'+col+sty,label='depth='+str(d))
-    pl.xlabel('depth')
-    pl.ylabel(r'$\gamma$')
-    pl.legend()
-    pl.tight_layout()
-    pl.savefig("pics/"+name+"_gamma.png")
-    pl.close()
+    #pl.figure(figsize=(20,10))
+    #pl.clf()
+    #for d in depths:
+    #    if d==1:
+    #        col='r'
+    #    elif d==2:
+    #        col='g'
+    #    else:
+    #        col='b'
+    #    sty=''
+    #    if not d==1:
+    #        sty=':'
+    #    pl.plot(np.arange(1,d+1),gammabetas['x0_d'+str(d)][::2],'x'+col+sty,label='depth='+str(d))
+    #    sty=''
+    #    if not d==1:
+    #        sty='-'
+    #    pl.plot(np.arange(1,d+1),gammabetas['xL_d'+str(d)][::2],'o'+col+sty,label='depth='+str(d))
+    #pl.xlabel('depth')
+    #pl.ylabel(r'$\gamma$')
+    #pl.legend()
+    #pl.tight_layout()
+    #pl.savefig("pics/"+name+"_gamma.png")
+    #pl.close()
 
-    pl.figure(figsize=(20,10))
-    pl.clf()
-    for d in depths:
-        if d==1:
-            col='r'
-        elif d==2:
-            col='g'
-        else:
-            col='b'
-        sty=''
-        if not d==1:
-            sty=':'
-        pl.plot(np.arange(1,d+1),gammabetas['x0_d'+str(d)][1::2],'x'+col+sty,label='depth='+str(d))
-        sty=''
-        if not d==1:
-            sty='-'
-        pl.plot(np.arange(1,d+1),gammabetas['xL_d'+str(d)][1::2],'o'+col+sty,label='depth='+str(d))
-    pl.legend()
-    pl.xlabel('depth')
-    pl.ylabel(r'$\beta$')
-    pl.legend()
-    pl.tight_layout()
-    pl.savefig("pics/"+name+"_beta.png")
-    pl.close()
+    #pl.figure(figsize=(20,10))
+    #pl.clf()
+    #for d in depths:
+    #    if d==1:
+    #        col='r'
+    #    elif d==2:
+    #        col='g'
+    #    else:
+    #        col='b'
+    #    sty=''
+    #    if not d==1:
+    #        sty=':'
+    #    pl.plot(np.arange(1,d+1),gammabetas['x0_d'+str(d)][1::2],'x'+col+sty,label='depth='+str(d))
+    #    sty=''
+    #    if not d==1:
+    #        sty='-'
+    #    pl.plot(np.arange(1,d+1),gammabetas['xL_d'+str(d)][1::2],'o'+col+sty,label='depth='+str(d))
+    #pl.legend()
+    #pl.xlabel('depth')
+    #pl.ylabel(r'$\beta$')
+    #pl.legend()
+    #pl.tight_layout()
+    #pl.savefig("pics/"+name+"_beta.png")
+    #pl.close()
 
 
 
