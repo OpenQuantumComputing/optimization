@@ -41,6 +41,112 @@ def Cn_U3_0theta0(qc, control_indices, target_index, theta):
     else:
         raise Exception("C^nU_3(0,theta,0) not yet implemented for n="+str(n)+".")
 
+def CGp(qc, control_index, target_index, p):
+    """
+    Ref: https://onlinelibrary.wiley.com/doi/pdf/10.1002/qute.201900015
+
+    """
+    thetadash = np.arcsin(np.sqrt(p))
+    qc.u(thetadash, 0, 0, target_index)
+    qc.cx(control_index, target_index)
+    qc.u(-thetadash, 0, 0, target_index)
+
+def Wn(qc, indices):
+    """
+    Ref: https://onlinelibrary.wiley.com/doi/pdf/10.1002/qute.201900015
+
+    """
+    n=len(indices)
+    if n<2 or n>8:
+        raise Exception("Wn not defined for n="+str(n)+".")
+
+    qc.x(indices[0])
+
+    if n==2:
+        qc.h(indices[1])
+        qc.cx(indices[1], indices[0])
+    elif n==3:
+        CGp(qc, indices[0], indices[1], 1/3)
+        qc.cx(indices[1], indices[0])
+        #
+        CGp(qc, indices[1], indices[2], 1/2)
+        qc.cx(indices[2], indices[1])
+    elif n==4:
+        CGp(qc, indices[0], indices[1], 1/4)
+        qc.cx(indices[1], indices[0])
+        #
+        CGp(qc, indices[1], indices[2], 1/3)
+        qc.cx(indices[2], indices[1])
+        #
+        CGp(qc, indices[2], indices[3], 1/2)
+        qc.cx(indices[3], indices[2])
+    elif n==5:
+        CGp(qc, indices[0], indices[1], 2/5)
+        qc.cx(indices[1], indices[0])
+        #
+        CGp(qc, indices[0], indices[2], 1/2)
+        qc.cx(indices[2], indices[0])
+        #
+        CGp(qc, indices[1], indices[3], 1/3)
+        qc.cx(indices[3], indices[1])
+        #
+        CGp(qc, indices[3], indices[4], 1/2)
+        qc.cx(indices[4], indices[3])
+    elif n==6:
+        CGp(qc, indices[0], indices[1], 3/6)
+        qc.cx(indices[1], indices[0])
+        #
+        CGp(qc, indices[0], indices[2], 1/3)
+        qc.cx(indices[2], indices[0])
+        #
+        CGp(qc, indices[1], indices[3], 2/3)
+        qc.cx(indices[3], indices[1])
+        #
+        CGp(qc, indices[2], indices[4], 1/2)
+        qc.cx(indices[4], indices[2])
+        #
+        CGp(qc, indices[1], indices[5], 1/2)
+        qc.cx(indices[5], indices[1])
+    elif n==7:
+        CGp(qc, indices[0], indices[1], 3/7)
+        qc.cx(indices[1], indices[0])
+        #
+        CGp(qc, indices[0], indices[2], 1/3)
+        qc.cx(indices[2], indices[0])
+        #
+        CGp(qc, indices[1], indices[3], 1/2)
+        qc.cx(indices[3], indices[1])
+        #
+        CGp(qc, indices[2], indices[4], 1/2)
+        qc.cx(indices[4], indices[2])
+        #
+        CGp(qc, indices[1], indices[5], 1/2)
+        qc.cx(indices[5], indices[1])
+        #
+        CGp(qc, indices[3], indices[6], 1/2)
+        qc.cx(indices[6], indices[3])
+    elif n==8:
+        CGp(qc, indices[0], indices[1], 1/2)
+        qc.cx(indices[1], indices[0])
+        #
+        CGp(qc, indices[0], indices[2], 1/2)
+        qc.cx(indices[2], indices[0])
+        #
+        CGp(qc, indices[1], indices[3], 1/2)
+        qc.cx(indices[3], indices[1])
+        #
+        CGp(qc, indices[0], indices[4], 1/2)
+        qc.cx(indices[4], indices[0])
+        #
+        CGp(qc, indices[2], indices[5], 1/2)
+        qc.cx(indices[5], indices[2])
+        #
+        CGp(qc, indices[1], indices[6], 1/2)
+        qc.cx(indices[6], indices[1])
+        #
+        CGp(qc, indices[3], indices[7], 1/2)
+        qc.cx(indices[7], indices[3])
+
 
 def binstringToLabels_MaxKCut(k_cuts,num_V,binstring):
     k_bits = kBits_MaxKCut(k_cuts)
@@ -64,6 +170,90 @@ def cost_MaxCut(labels, G, k_cuts):
             w = G[edge[0]][edge[1]]['weight']
             C += w
     return C
+
+
+
+def validcoloring_onehot(s):
+    num_ones=0
+    for i in range(len(s)):
+        num_ones+=int(s[i])
+        if num_ones>1:
+            break
+    val = True
+    if num_ones!=1:
+        val = False
+    return val
+
+def validstring_onehot(s,num_V):
+    if len(s)%num_V!=0:
+        raise Exception("inconsistent lenght")
+    l=int(len(s)/num_V)
+    vale = True
+    for i in range(num_V):
+        ss=s[i*l:i*l+l]
+        val=validcoloring_onehot(ss)
+        #print(ss,val)
+        if not val:
+            break
+    return val
+
+def getcolor(s):
+    for i in range(len(s)):
+        if int(s[i])==1:
+            return i
+    return -1
+
+def binstringToLabels_MaxKCut_onehot(labels, num_V, k_cuts):
+    l=int(len(labels)/num_V)
+    label_string=''
+    for i in range(num_V):
+        ss=labels[i*l:i*l+l]
+        label_string+=str(getcolor(ss))
+    return label_string
+
+def measurementStatistics_MaxCut_onehot(experiment_results,  options=None):
+    """
+    Calculates the expectation and variance of the cost function. If
+    results from multiple circuits are used as input, each circuit's
+    expectation value is returned.
+    :param experiment_results: Input on the form execute(...).result().results
+    :param G: The graph on which the cost function is defined.
+    :return: Lists of expectation values and variances
+    """
+
+    G = options.get('G', None)
+    k_cuts = options.get('k_cuts', None)
+    if G == None or k_cuts == False:
+        raise Exception("Please specify options G and k_cuts")
+
+    cost_best = -np.inf
+
+    expectations = []
+    variances = []
+    num_V = G.number_of_nodes()
+    for result in experiment_results:
+        n_shots = result.shots
+        counts = result.data.counts
+
+        E = 0
+        E2 = 0
+        for hexkey in list(counts.keys()):
+            count = counts[hexkey]
+            binstring = "{0:b}".format(int(hexkey,0)).zfill(num_V*k_cuts)
+            if validstring_onehot(binstring, num_V):
+                labels = binstringToLabels_MaxKCut_onehot(binstring, num_V, k_cuts)
+                cost = cost_MaxCut(labels,G, k_cuts)
+                cost_best = max(cost_best, cost)
+                E += cost*count;
+                E2 += cost**2*count;
+
+        if n_shots == 1:
+            v = 0
+        else:
+            v = (E2-E**2)*n_shots/(n_shots-1)
+        expectations.append(E/n_shots)
+        variances.append(v)
+    return expectations, variances, cost_best
 
 def createCircuit_MaxCut(x, G, depth, k_cuts, version=1, usebarrier=False, name=None):
 
@@ -409,6 +599,91 @@ def createCircuit_MaxCut(x, G, depth, k_cuts, version=1, usebarrier=False, name=
         circ.measure(q, c)
     return circ
 
+def createCircuit_MaxCut_onehot(x, G, depth, k_cuts, alpha=None, version=2, usebarrier=False, name=None):
+
+    #W=np.zeros(2**k_cuts)
+    #for i in range(k_cuts):
+    #    bs='0b'
+    #    for j in range(k_cuts):
+    #        if i == j:
+    #            bs+="1"
+    #        else:
+    #            bs+="0"
+    #    ind=int(bs, 2)
+    #    W[ind]=1
+    #W = W/np.sqrt(k_cuts)
+
+    num_V = G.number_of_nodes()
+
+    num_qubits = num_V * k_cuts
+
+    q = QuantumRegister(num_qubits)
+    c = ClassicalRegister(num_qubits)
+    circ = QuantumCircuit(q, c, name=name)
+    if version==1:
+        circ.h(range(num_qubits))
+    else:
+        for v in range(num_V):
+            I = v*k_cuts
+            Wn(circ, [i for i in range(I, I+k_cuts)])
+            #circ.initialize(W, [q[i] for i in range(I, I+k_cuts)])
+
+    if usebarrier:
+        circ.barrier()
+    for d in range(depth):
+        gamma = x[2 * d]
+        beta = x[2 * d + 1]
+        # the objective Hamiltonian
+        for edge in G.edges():
+            i = int(edge[0])
+            j = int(edge[1])
+            w = G[edge[0]][edge[1]]['weight']
+            wg = w * gamma
+            I = k_cuts * i
+            J = k_cuts * j
+            for k in range(k_cuts):
+                circ.cx(q[I+k], q[J+k])
+                circ.rz(wg, q[J+k])
+                circ.cx(q[I+k], q[J+k])
+            if usebarrier:
+                circ.barrier()
+        # the penalty Hamiltonian
+        if alpha != None:
+            for v in range(num_V):
+                I = v*k_cuts
+                for i in range(k_cuts):
+                    for j in range(i+1,k_cuts):
+                        circ.cx(q[I+i], q[I+j])
+                        circ.rz(gamma*alpha, q[I+j])
+                        #circ.rz(alpha, q[I+j])
+                        circ.cx(q[I+i], q[I+j])
+                if usebarrier:
+                    circ.barrier()
+        if version==1:
+            circ.rx(-2 * beta, range(num_qubits))
+            if usebarrier:
+                circ.barrier()
+        else:
+            for v in range(num_V):
+                I = v*k_cuts
+                ## odd
+                for i in range(0,k_cuts-1,2):
+                    circ.rxx(-2 * beta, q[I+i], q[I+i+1])
+                    circ.ryy(-2 * beta, q[I+i], q[I+i+1])
+                ## even
+                for i in range(1,k_cuts,2):
+                    circ.rxx(-2 * beta, q[I+i], q[I+(i+1)%k_cuts])
+                    circ.ryy(-2 * beta, q[I+i], q[I+(i+1)%k_cuts])
+                # final
+                if k_cuts%2==1:
+                    circ.rxx(-2 * beta, q[I+k_cuts-1], q[I])
+                    circ.ryy(-2 * beta, q[I+k_cuts-1], q[I])
+                if usebarrier:
+                    circ.barrier()
+
+    circ.measure(q, c)
+    return circ
+
 
 def find_max_cut_brute_force(G, k_cuts):
     if (len(G) > 30):
@@ -446,6 +721,16 @@ def listSortedCosts_MaxCut(G, k_cuts):
             print(i / (2*k_cuts) ** num_V * 100, "%", end='\r')
     sortedcosts={k: v for k, v in sorted(costs.items(), key=lambda item: item[1])}
     return sortedcosts
+
+#def costsHist_MaxCut(G, k_cuts):
+#    num_V = G.number_of_nodes()
+#    costs=np.ones(k_cuts ** num_V)
+#    k_bits = kBits_MaxKCut(k_cuts)
+#    for i in range(k_cuts**num_V):
+#        binstring="{0:b}".format(i).zfill(num_V * k_bits)
+#        label_string = binstringToLabels_MaxKCut(k_cuts, num_V, binstring)
+#        costs[i]= cost_MaxCut(label_string,G, k_cuts)
+#    return costs
 
 def costsHist_MaxCut(G, k_cuts):
     if k_cuts!=2:
@@ -488,6 +773,7 @@ def bins_comp_basis(data, G, k_cuts):
             max_cost=lc
         average_cost+=lc*counts
     return bins_states, max_cost, average_cost/num_shots, max_solutions
+
 
 def measurementStatistics_MaxCut(experiment_results, options=None):
     """
@@ -790,25 +1076,32 @@ global g_values
 global g_bestvalues
 global g_gammabeta
 
-def getval(gammabeta, backend, G, k_cuts, depth=1, version=1, noisemodel=None, shots=1024*2*2*2, name=''):
+def getval(gammabeta, backend, G, k_cuts, depth=1, version=version, noisemodel=None, shots=1024*2*2*2, name='', onehot=False, onehot_alpha=0):
     global g_it, g_values, g_bestvalues, g_gammabeta
     g_it+=1
 
-    circuit = createCircuit_MaxCut(gammabeta, G, depth, k_cuts, version=version, usebarrier=False, name=name)
+    if onehot:
+        circuit = createCircuit_MaxCut_onehot(gammabeta, G, depth, k_cuts, alpha=onehot_alpha, version=version, usebarrier=False, name=name)
+    else:
+        circuit = createCircuit_MaxCut(gammabeta, G, depth, k_cuts, version=version, usebarrier=False, name=name)
     if backend.configuration().local:
         job = execute(circuit, backend=backend, noise_model=noisemodel, shots=shots)
     else:
         job = start_or_retrieve_job(name+"_"+str(g_it), backend, circuit, options={'shots' : shots})
 
-    val,_,bval = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
+    if onehot:
+        val,_,bval = measurementStatistics_MaxCut_onehot(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
+    else:
+        val,_,bval = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
     g_values[str(g_it)] = val[0]
     g_bestvalues[str(g_it)] = bval
     g_gammabeta[str(g_it)] = gammabeta
     return -val[0]
 
-def runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod='COBYLA', circuit_version=1, shots=1024*2*2*2, name='', rerun=False, maxdepth=3):
+def runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod='COBYLA', circuit_version=1, shots=1024*2*2*2, name='', rerun=False, maxdepth=3, onehot=False, onehot_alpha=0):
     if k_cuts<2:
         raise Exception("k_cuts must be at least 2")
+    repeats=5
     gammabetas = {}
     E = {}
     best = {}
@@ -818,6 +1111,7 @@ def runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=
     print("depth =",depth)
 ################
 ### ----------------------------
+    print("Calculating Energy landscape...")
     gamma_grid = np.linspace(0, gamma_max, gamma_n)
     beta_grid = np.linspace(0, beta_max, beta_n)
     Elandscapefile="../data/sample_graphs/"+name+"_Elandscape.npy"
@@ -828,9 +1122,15 @@ def runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=
             circuits=[]
             for beta in beta_grid:
                 for gamma in gamma_grid:
-                    circuits.append(createCircuit_MaxCut(np.array((gamma,beta)), G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"_"+str(beta_n)+"_"+str(gamma_n)))
+                    if onehot:
+                        circuits.append(createCircuit_MaxCut_onehot(np.array((gamma,beta)), G, depth, k_cuts, alpha=onehot_alpha, version=circuit_version, usebarrier=False, name=name+"_"+str(beta_n)+"_"+str(gamma_n)))
+                    else:
+                        circuits.append(createCircuit_MaxCut(np.array((gamma,beta)), G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"_"+str(beta_n)+"_"+str(gamma_n)))
             job = execute(circuits, backend, shots=shots)
-            El,_,_ = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
+            if onehot:
+                El,_,_ = measurementStatistics_MaxCut_onehot(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
+            else:
+                El,_,_ = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
             Elandscape = -np.array(El)
         else:
             Elandscape = np.zeros((beta_n, gamma_n))
@@ -840,11 +1140,21 @@ def runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=
                 g=-1
                 for gamma in gamma_grid:
                     g+=1
-                    circuit = createCircuit_MaxCut(np.array((gamma,beta)), G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"_"+str(b)+"_"+str(g))
+                    if onehot:
+                        circuit = createCircuit_MaxCut_onehot(np.array((gamma,beta)), G, depth, k_cuts, alpha=onehot_alpha, version=circuit_version, usebarrier=False, name=name+"_"+str(b)+"_"+str(g))
+                    else:
+                        circuit = createCircuit_MaxCut(np.array((gamma,beta)), G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"_"+str(b)+"_"+str(g))
                     job = start_or_retrieve_job(name+"_"+str(b)+"_"+str(g), backend, circuit, options={'shots' : shots})
-                    e,_,_ = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
+                    #print("error message = ", job.error_message())
+                    #job.error_message()
+                    if onehot:
+                        e,_,_ = measurementStatistics_MaxCut_onehot(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
+                        print(e)
+                    else:
+                        e,_,_ = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
                     Elandscape[b,g] = -e[0]
         np.save(Elandscapefile, Elandscape)
+    print("Calculating Energy landscape done")
 
     ### reshape and find parameters that achieved minimal energy
     if backend.configuration().local:
@@ -860,9 +1170,9 @@ def runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=
     g_bestvalues={}
     g_gammabeta={}
 
-    for rep in range(5):
+    for rep in range(repeats):
         print("depth =",depth, "rep =", rep)
-        out = minimize(getval, x0=x0, method=optmethod, args=(backend, G, k_cuts, depth, circuit_version, None, shots, name+"_opt_"+str(depth)), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
+        out = minimize(getval, x0=x0, method=optmethod, args=(backend, G, k_cuts, depth, circuit_version, None, shots, name+"_opt_"+str(depth), onehot, onehot_alpha), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
     ### pick the best value along the path
     ind = max(g_values, key=g_values.get)
     gammabetas['x0_d'+str(depth)] = x0.copy()
@@ -890,9 +1200,9 @@ def runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=
         g_values={}
         g_bestvalues={}
 
-        for rep in range(5):
+        for rep in range(repeats):
             print("depth =",depth, "rep =", rep)
-            out = minimize(getval, x0=x0, method=optmethod, args=(backend, G, k_cuts, depth, circuit_version, None, shots, name+"_opt_"+str(depth)), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
+            out = minimize(getval, x0=x0, method=optmethod, args=(backend, G, k_cuts, depth, circuit_version, None, shots, name+"_opt_"+str(depth), onehot, onehot_alpha), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
         ### pick the best value along the path
         ind = max(g_values, key=g_values.get)
         gammabetas['x0_d'+str(depth)] = x0.copy()
@@ -920,9 +1230,9 @@ def runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=
         g_values={}
         g_bestvalues={}
 
-        for rep in range(5):
+        for rep in range(repeats):
             print("depth =",depth, "rep =", rep)
-            out = minimize(getval, x0=x0, method=optmethod, args=(backend, G, k_cuts, depth, circuit_version, None, shots, name+"_opt_"+str(depth)), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
+            out = minimize(getval, x0=x0, method=optmethod, args=(backend, G, k_cuts, depth, circuit_version, None, shots, name+"_opt_"+str(depth), onehot, onehot_alpha), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
         ### pick the best value along the path
         ind = max(g_values, key=g_values.get)
         gammabetas['x0_d'+str(depth)] = x0.copy()
@@ -950,9 +1260,9 @@ def runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=
         g_values={}
         g_bestvalues={}
 
-        for rep in range(5):
+        for rep in range(repeats):
             print("depth =",depth, "rep =", rep)
-            out = minimize(getval, x0=x0, method=optmethod, args=(backend, G, k_cuts, depth, circuit_version, None, shots, name+"_opt_"+str(depth)), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
+            out = minimize(getval, x0=x0, method=optmethod, args=(backend, G, k_cuts, depth, circuit_version, None, shots, name+"_opt_"+str(depth), onehot, onehot_alpha), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
         ### pick the best value along the path
         ind = max(g_values, key=g_values.get)
         gammabetas['x0_d'+str(depth)] = x0.copy()
@@ -962,7 +1272,7 @@ def runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=
 
     return Elandscape, gammabetas, E, best
 
-def getStatistics(G, k_cuts, backend, gammabetas, circuit_version=1, shots=1024*2*2*2, maxdepth=3, name=''):
+def getStatistics(G, k_cuts, backend, gammabetas, circuit_version=1, shots=1024*2*2*2, maxdepth=3, name='', onehot=False, onehot_alpha=0):
 
     #num_shots = [i for i in range(2,2**6+1)]
     #num_shots.append(2**7)
@@ -990,12 +1300,18 @@ def getStatistics(G, k_cuts, backend, gammabetas, circuit_version=1, shots=1024*
 
     x = gammabetas['xL_d'+str(depth)]
     for ns in num_shots:
-        circ = createCircuit_MaxCut(x, G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"d"+str(d))
+        if onehot:
+            circ = createCircuit_MaxCut_onehot(x, G, depth, k_cuts, alpha=onehot_alpha, version=circuit_version, usebarrier=False, name=name+"d"+str(depth))
+        else:
+            circ = createCircuit_MaxCut(x, G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"d"+str(depth))
         if backend.configuration().local:
             job = execute(circ, backend, shots=ns)
         else:
             job = start_or_retrieve_job(name+str(depth), backend, circ, options={'shots' : ns})
-        mc,_,bc = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
+        if onehot:
+            mc,_,bc = measurementStatistics_MaxCut_onehot(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
+        else:
+            mc,_,bc = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
         av_max_cost[str(depth)].append(mc)
         best_cost[str(depth)].append(bc)
 
@@ -1013,12 +1329,18 @@ def getStatistics(G, k_cuts, backend, gammabetas, circuit_version=1, shots=1024*
 
         x = gammabetas['xL_d'+str(depth)]
         for ns in num_shots:
-            circ = createCircuit_MaxCut(x, G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"d"+str(d))
+            if onehot:
+                circ = createCircuit_MaxCut_onehot(x, G, depth, k_cuts, alpha=onehot_alpha, version=circuit_version, usebarrier=False, name=name+"d"+str(depth))
+            else:
+                circ = createCircuit_MaxCut(x, G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"d"+str(depth))
             if backend.configuration().local:
                 job = execute(circ, backend, shots=ns)
             else:
                 job = start_or_retrieve_job(name+str(depth), backend, circ, options={'shots' : ns})
-            mc,_,bc = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
+            if onehot:
+                mc,_,bc = measurementStatistics_MaxCut_onehot(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
+            else:
+                mc,_,bc = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
             av_max_cost[str(depth)].append(mc)
             best_cost[str(depth)].append(bc)
 
@@ -1036,12 +1358,18 @@ def getStatistics(G, k_cuts, backend, gammabetas, circuit_version=1, shots=1024*
 
         x = gammabetas['xL_d'+str(depth)]
         for ns in num_shots:
-            circ = createCircuit_MaxCut(x, G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"d"+str(d))
+            if onehot:
+                circ = createCircuit_MaxCut_onehot(x, G, depth, k_cuts, alpha=onehot_alpha, version=circuit_version, usebarrier=False, name=name+"d"+str(depth))
+            else:
+                circ = createCircuit_MaxCut(x, G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"d"+str(depth))
             if backend.configuration().local:
                 job = execute(circ, backend, shots=ns)
             else:
                 job = start_or_retrieve_job(name+str(depth), backend, circ, options={'shots' : ns})
-            mc,_,bc = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
+            if onehot:
+                mc,_,bc = measurementStatistics_MaxCut_onehot(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
+            else:
+                mc,_,bc = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
             av_max_cost[str(depth)].append(mc)
             best_cost[str(depth)].append(bc)
 
@@ -1059,12 +1387,18 @@ def getStatistics(G, k_cuts, backend, gammabetas, circuit_version=1, shots=1024*
 
         x = gammabetas['xL_d'+str(depth)]
         for ns in num_shots:
-            circ = createCircuit_MaxCut(x, G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"d"+str(d))
+            if onehot:
+                circ = createCircuit_MaxCut_onehot(x, G, depth, k_cuts, alpha=onehot_alpha, version=circuit_version, usebarrier=False, name=name+"d"+str(depth))
+            else:
+                circ = createCircuit_MaxCut(x, G, depth, k_cuts, version=circuit_version, usebarrier=False, name=name+"d"+str(depth))
             if backend.configuration().local:
                 job = execute(circ, backend, shots=ns)
             else:
                 job = start_or_retrieve_job(name+str(depth), backend, circ, options={'shots' : ns})
-            mc,_,bc = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
+            if onehot:
+                mc,_,bc = measurementStatistics_MaxCut_onehot(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
+            else:
+                mc,_,bc = measurementStatistics_MaxCut(job.result().results, options={'G' : G, 'k_cuts' : k_cuts})
             av_max_cost[str(depth)].append(mc)
             best_cost[str(depth)].append(bc)
 

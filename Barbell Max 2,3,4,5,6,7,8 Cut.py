@@ -50,11 +50,11 @@ gamma_n = 24
 beta_max = np.pi/2
 gamma_max = np.pi
 optmethod='Nelder-Mead'
-circuit_version=1
+circuit_version=2
 shots=1024*2*2*2
 rerun=True
 
-maxdepth=2
+maxdepth=3
 
 depths=range(1,maxdepth+1)
 
@@ -64,9 +64,10 @@ for k_cuts in [2,3,4,5,6,7,8]:
     outstr+=str(k_cuts)
     print(" k=", k_cuts)
     name="Barbell"+str(gamma_n)+"x"+str(beta_n)+"_v"+str(circuit_version)+"_k"+str(k_cuts)
-    Elandscape, gammabetas, E =  runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=optmethod, circuit_version=circuit_version, shots=shots, name=name, rerun=rerun, maxdepth=maxdepth)
+    Elandscape, gammabetas, E, best =  runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=optmethod, circuit_version=circuit_version, shots=shots, name=name, rerun=rerun, maxdepth=maxdepth)
 
-    max_val, label = classical_maxkcut_solver(G, k_cuts)
+    #max_val, label = classical_maxkcut_solver(G, k_cuts)
+    max_val=1
 
     shiftg=gamma_max/(2*gamma_n)
     shiftb=beta_max/(2*beta_n)
@@ -89,91 +90,96 @@ for k_cuts in [2,3,4,5,6,7,8]:
     pl.savefig("pics/E_"+name+".png")
     pl.close()
 
-    num_shots, av_max_cost, best_cost, distribution = getStatistics(G, k_cuts, backend, gammabetas, circuit_version=circuit_version, shots=shots, maxdepth=maxdepth)
-
     for depth in depths:
-        outstr+=" & "+"{:.2f}".format(av_max_cost[str(depth)][0][0])
+        outstr+=" & "+"{:.3f}".format(E[str(depth)]/max_val)
     outstr+="\\\\ \n"
     print(outstr)
 
-    for depth in depths:
-        plot_histogram(distribution[str(depth)], figsize=(20,10))
-        pl.savefig("pics/"+name+"_hist_d"+str(depth)+".png")
-        pl.close()
+    #num_shots, av_max_cost, best_cost, distribution = getStatistics(G, k_cuts, backend, gammabetas, circuit_version=circuit_version, shots=shots, maxdepth=maxdepth)
 
-    pl.figure(figsize=(10,5))
-    pl.clf()
-    for depth in depths:
-        pl.semilogx(num_shots[63:], np.array(av_max_cost[str(depth)][63:])/max_val,'x-', base=2, label='d='+str(depth), linewidth=2,markersize=14)
-    pl.ylabel('r')
-    pl.xlabel('num shots')
-    pl.legend()
-    pl.grid(True, which="both")
-    pl.tight_layout()
-    pl.savefig("pics/"+name+"_avE.png")
-    pl.close()
+    #for depth in depths:
+    #    outstr+=" & "+"{:.3f}".format(av_max_cost[str(depth)][0][0])
+    #outstr+="\\\\ \n"
+    #print(outstr)
 
-    pl.figure(figsize=(10,5))
-    pl.clf()
-    for depth in depths:
-        pl.plot(num_shots[:36], np.array(av_max_cost[str(depth)][:36])/max_val,'x-', label='d='+str(depth), linewidth=2,markersize=14)
-    pl.legend()
-    pl.ylabel('r')
-    pl.xlabel('num shots')
-    pl.legend()
-    pl.grid(True, which="both")
-    pl.tight_layout()
-    pl.savefig("pics/"+name+"_bestE"+str(depth)+".png")
-    pl.close()
+    #for depth in depths:
+    #    plot_histogram(distribution[str(depth)], figsize=(20,10))
+    #    pl.savefig("pics/"+name+"_hist_d"+str(depth)+".png")
+    #    pl.close()
 
-    pl.figure(figsize=(10,5))
-    pl.clf()
-    for d in depths:
-        if d==1:
-            col='r'
-        elif d==2:
-            col='g'
-        else:
-            col='b'
-        sty=''
-        if not d==1:
-            sty=':'
-        pl.plot(np.arange(1,d+1),gammabetas['x0_d'+str(d)][::2],'x'+col+sty,label='depth='+str(d))
-        sty=''
-        if not d==1:
-            sty='-'
-        pl.plot(np.arange(1,d+1),gammabetas['xL_d'+str(d)][::2],'o'+col+sty,label='depth='+str(d))
-    pl.xlabel('depth')
-    pl.ylabel(r'$\gamma$')
-    pl.legend()
-    pl.tight_layout()
-    pl.savefig("pics/"+name+"_gamma.png")
-    pl.close()
+    #pl.figure(figsize=(10,5))
+    #pl.clf()
+    #for depth in depths:
+    #    pl.semilogx(num_shots[63:], np.array(av_max_cost[str(depth)][63:])/max_val,'x-', base=2, label='d='+str(depth), linewidth=2,markersize=14)
+    #pl.ylabel('r')
+    #pl.xlabel('num shots')
+    #pl.legend()
+    #pl.grid(True, which="both")
+    #pl.tight_layout()
+    #pl.savefig("pics/"+name+"_avE.png")
+    #pl.close()
 
-    pl.figure(figsize=(10,5))
-    pl.clf()
-    for d in depths:
-        if d==1:
-            col='r'
-        elif d==2:
-            col='g'
-        else:
-            col='b'
-        sty=''
-        if not d==1:
-            sty=':'
-        pl.plot(np.arange(1,d+1),gammabetas['x0_d'+str(d)][1::2],'x'+col+sty,label='depth='+str(d))
-        sty=''
-        if not d==1:
-            sty='-'
-        pl.plot(np.arange(1,d+1),gammabetas['xL_d'+str(d)][1::2],'o'+col+sty,label='depth='+str(d))
-    pl.legend()
-    pl.xlabel('depth')
-    pl.ylabel(r'$\beta$')
-    pl.legend()
-    pl.tight_layout()
-    pl.savefig("pics/"+name+"_beta.png")
-    pl.close()
+    #pl.figure(figsize=(10,5))
+    #pl.clf()
+    #for depth in depths:
+    #    pl.plot(num_shots[:36], np.array(av_max_cost[str(depth)][:36])/max_val,'x-', label='d='+str(depth), linewidth=2,markersize=14)
+    #pl.legend()
+    #pl.ylabel('r')
+    #pl.xlabel('num shots')
+    #pl.legend()
+    #pl.grid(True, which="both")
+    #pl.tight_layout()
+    #pl.savefig("pics/"+name+"_bestE"+str(depth)+".png")
+    #pl.close()
+
+    #pl.figure(figsize=(10,5))
+    #pl.clf()
+    #for d in depths:
+    #    if d==1:
+    #        col='r'
+    #    elif d==2:
+    #        col='g'
+    #    else:
+    #        col='b'
+    #    sty=''
+    #    if not d==1:
+    #        sty=':'
+    #    pl.plot(np.arange(1,d+1),gammabetas['x0_d'+str(d)][::2],'x'+col+sty,label='depth='+str(d))
+    #    sty=''
+    #    if not d==1:
+    #        sty='-'
+    #    pl.plot(np.arange(1,d+1),gammabetas['xL_d'+str(d)][::2],'o'+col+sty,label='depth='+str(d))
+    #pl.xlabel('depth')
+    #pl.ylabel(r'$\gamma$')
+    #pl.legend()
+    #pl.tight_layout()
+    #pl.savefig("pics/"+name+"_gamma.png")
+    #pl.close()
+
+    #pl.figure(figsize=(10,5))
+    #pl.clf()
+    #for d in depths:
+    #    if d==1:
+    #        col='r'
+    #    elif d==2:
+    #        col='g'
+    #    else:
+    #        col='b'
+    #    sty=''
+    #    if not d==1:
+    #        sty=':'
+    #    pl.plot(np.arange(1,d+1),gammabetas['x0_d'+str(d)][1::2],'x'+col+sty,label='depth='+str(d))
+    #    sty=''
+    #    if not d==1:
+    #        sty='-'
+    #    pl.plot(np.arange(1,d+1),gammabetas['xL_d'+str(d)][1::2],'o'+col+sty,label='depth='+str(d))
+    #pl.legend()
+    #pl.xlabel('depth')
+    #pl.ylabel(r'$\beta$')
+    #pl.legend()
+    #pl.tight_layout()
+    #pl.savefig("pics/"+name+"_beta.png")
+    #pl.close()
 
 
 

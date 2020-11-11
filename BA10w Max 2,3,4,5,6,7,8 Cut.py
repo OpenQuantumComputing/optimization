@@ -46,7 +46,7 @@ gamma_n = 24
 beta_max = np.pi/2
 gamma_max = np.pi
 optmethod='Nelder-Mead'
-circuit_version=1
+circuit_version=2
 shots=1024*2*2*2
 rerun=False
 
@@ -57,19 +57,22 @@ depths=range(1,maxdepth+1)
 outstr=""
 outstrbest=""
 
+max_val = np.array([8.657714089848158, 10.87975400338161, 11.059417685176726, 11.059417685176726, 11.059417685176726, 11.059417685176726, 11.059417685176726])
+
 for k_cuts in [2,3,4,5,6,7,8]:
     if k_cuts<=4:
         backend = Aer.get_backend('qasm_simulator')
     else:
         backend = provider.get_backend('ibmq_qasm_simulator')
 
+    #max_val, label = find_max_cut_brute_force(G, k_cuts)
+    #classical_maxkcut_solver(G, k_cuts)
+
     outstr+=str(k_cuts)
     outstrbest+=str(k_cuts)
     print(" k=", k_cuts)
     name="BA10w"+str(gamma_n)+"x"+str(beta_n)+"_v"+str(circuit_version)+"_k"+str(k_cuts)
     Elandscape, gammabetas, E, best =  runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=optmethod, circuit_version=circuit_version, shots=shots, name=name, rerun=rerun)
-
-    max_val, label = classical_maxkcut_solver(G, k_cuts)
 
     shiftg=gamma_max/(2*gamma_n)
     shiftb=beta_max/(2*beta_n)
@@ -96,19 +99,19 @@ for k_cuts in [2,3,4,5,6,7,8]:
     #num_shots, av_max_cost, best_cost, distribution = getStatistics(G, k_cuts, backend, gammabetas, circuit_version=circuit_version, shots=shots, name=name+"_best")
 
     for depth in depths:
-        outstr+=" & "+"{:.2f}".format(E[str(depth)]/max_val)
+        outstr+=" & "+"{:.2f}".format(E[str(depth)]/max_val[k_cuts-2])
     outstr+="\\\\ \n"
     print(outstr)
 
     for depth in depths:
-        outstrbest+=" & "+"{:.2f}".format(best[str(depth)]/max_val)
+        outstrbest+=" & "+"{:.2f}".format(best[str(depth)]/max_val[k_cuts-2])
     outstrbest+="\\\\ \n"
     print(outstrbest)
 
     #pl.figure(figsize=(20,10))
     #pl.clf()
     #for depth in depths:
-    #    pl.semilogx(num_shots[63:], np.array(av_max_cost[str(depth)][63:])/max_val,'x-', base=2, label='d='+str(depth), linewidth=2,markersize=14)
+    #    pl.semilogx(num_shots[63:], np.array(av_max_cost[str(depth)][63:])/max_val[k_cuts-2],'x-', base=2, label='d='+str(depth), linewidth=2,markersize=14)
     #pl.ylabel('r')
     #pl.xlabel('num shots')
     #pl.legend()
@@ -120,7 +123,7 @@ for k_cuts in [2,3,4,5,6,7,8]:
     #pl.figure(figsize=(20,10))
     #pl.clf()
     #for depth in depths:
-    #    pl.plot(num_shots[:36], np.array(av_max_cost[str(depth)][:36])/max_val,'x-', label='d='+str(depth), linewidth=2,markersize=14)
+    #    pl.plot(num_shots[:36], np.array(av_max_cost[str(depth)][:36])/max_val[k_cuts-2],'x-', label='d='+str(depth), linewidth=2,markersize=14)
     #pl.legend()
     #pl.ylabel('r')
     #pl.xlabel('num shots')
