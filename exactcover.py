@@ -36,10 +36,13 @@ def createCircuit_ExactCover(x, depth, options=None):
         gamma = x[2 * d]
         beta = x[2 * d + 1]
         for i in range(rN):
-            w = .5*np.sum(FR[:,i]*(np.sum(FR,1)-2)[i])
+            w=0
+            for j in range(fn):
+                w += .5*FR[j,i]*(np.sum(FR[j,:])-2)
             if abs(w)>1e-14:
-                wg = 2 * w * gamma
+                wg = w * gamma
                 circ.rz(wg, q[i])
+            ###
             for j in range(i+1, rN):
                 w=0
                 for k in range(fn):
