@@ -18,9 +18,12 @@ def createCircuit_ExactCover(x, depth, options=None):
     .
     fn
     where each column indicates if route r uses flight f (entry is 1) or not (entry is 0)
+    
+    CR is a vector of route costs [c1 ... cN] where c1 is the cost of route r1 
     """
 
     FR = options.get('FR', None)
+    CR = options.get('CR', None)
     usebarrier = options.get('usebarrier', False)
     name = options.get('name', None)
 
@@ -39,6 +42,7 @@ def createCircuit_ExactCover(x, depth, options=None):
             w=0
             for j in range(fn):
                 w += .5*FR[j,i]*(np.sum(FR[j,:])-2)
+            w += .25*CR[i]**2
             if abs(w)>1e-14:
                 wg = w * gamma
                 circ.rz(wg, q[i])
@@ -47,6 +51,8 @@ def createCircuit_ExactCover(x, depth, options=None):
                 w=0
                 for k in range(fn):
                     w += 0.5*FR[k,i]*FR[k,j]
+                if (i == j):
+                    w += 0.25*CR[i]**2
                 if w>0:
                     wg = w * gamma
                     circ.cx(q[i], q[j])
@@ -65,13 +71,13 @@ def createCircuit_ExactCover(x, depth, options=None):
     circ.measure(q, c)
     return circ
 
-def cost_exactCover(binstring, FR):
+def cost_exactCover(binstring, FR, CR):
     rN=FR.shape[1]
     a=np.zeros(rN)
     for i in np.arange(len(binstring)):
         ### inverse order, because qiskit order is $q_n q_{n-1} .... q_0$
         a[len(binstring)-i-1]=int(binstring[i])
-    return -np.sum((np.sum(FR*a,1) -1)**2)
+    return -np.sum((np.sum(FR*a,1) -1)**2) - np.sum(a*(CR**2))
 
 def measurementStatistics_ExactCover(experiment_results, options=None):
     """
@@ -84,6 +90,7 @@ def measurementStatistics_ExactCover(experiment_results, options=None):
     """
 
     FR = options.get('FR', None)
+    CR = options.get('CR', None)
     rN=FR.shape[1]
 
     cost_best = -np.inf
@@ -99,10 +106,10 @@ def measurementStatistics_ExactCover(experiment_results, options=None):
         for hexkey in list(counts.keys()):
             count = counts[hexkey]
             binstring = "{0:b}".format(int(hexkey,0)).zfill(rN)
-            cost = cost_exactCover(binstring, FR)
+            cost = cost_exactCover(binstring, FR, CR)
             cost_best = max(cost_best, cost)
-            E += cost*count/n_shots;
-            E2 += cost**2*count/n_shots;
+            E += cost*count/n_shots
+            E2 += cost**2*count/n_shots
 
         if n_shots == 1:
             v = 0
