@@ -110,7 +110,7 @@ def runQAOA(createCircuit, measurementStatistics, backend, gamma_n, beta_n, gamm
     g_gammabeta={}
 
     for rep in range(repeats):
-        print("depth =",depth, "rep =", rep)
+        print("depth =",depth, "rep =", rep+1)
         options['name'] = name+"_opt_"+str(depth)
         out = minimize(getval, x0=x0, method=optmethod, args=(createCircuit, measurementStatistics, backend, depth, None, shots, options), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
     ### pick the best value along the path
@@ -120,41 +120,10 @@ def runQAOA(createCircuit, measurementStatistics, backend, gamma_n, beta_n, gamm
     E[''+str(depth)] = g_values[ind]
     best[''+str(depth)] = g_bestvalues[ind]
 
-    if maxdepth>=2:
+    while depth < maxdepth:
 ### ----------------------------
 ################
-        depth=2
-        print("depth =",depth)
-################
-### ----------------------------
-
-        ### interpolation heuristic
-        inter0 = INTERP_init(np.array((gammabetas['xL_d'+str(depth-1)][::2],)))
-        inter1 = INTERP_init(np.array((gammabetas['xL_d'+str(depth-1)][1::2],)))
-        x0 = np.array((inter0[0], inter1[0], inter0[1], inter1[1]))
-
-        ### local optimization
-        #cons = COBYLAConstraints_MaxCut([0,gamma_max], [0,beta_max], depth)
-        g_it=0
-        g_gammabeta={}
-        g_values={}
-        g_bestvalues={}
-
-        for rep in range(repeats):
-            print("depth =",depth, "rep =", rep)
-            options['name'] = name+"_opt_"+str(depth)
-            out = minimize(getval, x0=x0, method=optmethod, args=(createCircuit, measurementStatistics, backend, depth, None, shots, options), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
-        ### pick the best value along the path
-        ind = max(g_values, key=g_values.get)
-        gammabetas['x0_d'+str(depth)] = x0.copy()
-        gammabetas['xL_d'+str(depth)] = g_gammabeta[ind].copy()
-        E[''+str(depth)] = g_values[ind]
-        best[''+str(depth)] = g_bestvalues[ind]
-
-    if maxdepth>=3:
-### ----------------------------
-################
-        depth=3
+        depth+=1
         print("depth =",depth)
 ################
 ### ----------------------------
@@ -162,7 +131,9 @@ def runQAOA(createCircuit, measurementStatistics, backend, gamma_n, beta_n, gamm
         ### interpolation heuristic
         inter0 = INTERP_init(gammabetas['xL_d'+str(depth-1)][::2])
         inter1 = INTERP_init(gammabetas['xL_d'+str(depth-1)][1::2])
-        x0 = np.array((inter0[0], inter1[0], inter0[1], inter1[1], inter0[2], inter1[2]))
+        x0 = np.zeros((2*depth))
+        x0[::2] = inter0
+        x0[1::2] = inter1
 
         ### local optimization
         #cons = COBYLAConstraints_MaxCut([0,gamma_max], [0,beta_max], depth)
@@ -172,38 +143,7 @@ def runQAOA(createCircuit, measurementStatistics, backend, gamma_n, beta_n, gamm
         g_bestvalues={}
 
         for rep in range(repeats):
-            print("depth =",depth, "rep =", rep)
-            options['name'] = name+"_opt_"+str(depth)
-            out = minimize(getval, x0=x0, method=optmethod, args=(createCircuit, measurementStatistics, backend, depth, None, shots, options), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
-        ### pick the best value along the path
-        ind = max(g_values, key=g_values.get)
-        gammabetas['x0_d'+str(depth)] = x0.copy()
-        gammabetas['xL_d'+str(depth)] = g_gammabeta[ind].copy()
-        E[''+str(depth)] = g_values[ind]
-        best[''+str(depth)] = g_bestvalues[ind]
-
-    if maxdepth>=4:
-### ----------------------------
-################
-        depth=4
-        print("depth =",depth)
-################
-### ----------------------------
-
-        ### interpolation heuristic
-        inter0 = INTERP_init(gammabetas['xL_d'+str(depth-1)][::2])
-        inter1 = INTERP_init(gammabetas['xL_d'+str(depth-1)][1::2])
-        x0 = np.array((inter0[0], inter1[0], inter0[1], inter1[1], inter0[2], inter1[2], inter0[3], inter1[3]))
-
-        ### local optimization
-        #cons = COBYLAConstraints_MaxCut([0,gamma_max], [0,beta_max], depth)
-        g_it=0
-        g_gammabeta={}
-        g_values={}
-        g_bestvalues={}
-
-        for rep in range(repeats):
-            print("depth =",depth, "rep =", rep)
+            print("depth =",depth, "rep =", rep+1)
             options['name'] = name+"_opt_"+str(depth)
             out = minimize(getval, x0=x0, method=optmethod, args=(createCircuit, measurementStatistics, backend, depth, None, shots, options), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
         ### pick the best value along the path
@@ -223,6 +163,7 @@ def INTERP_init(params_prev_step):
     :param params_prev_step: optimal parameters at level p
     :return:
     """
+    print("P=",params_prev_step)
     p = params_prev_step.shape[0]
     params_out_list = np.zeros(p+1)
     params_out_list[0] = params_prev_step[0]
