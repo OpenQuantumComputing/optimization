@@ -1,9 +1,9 @@
 import unittest
-from qaoa import *
+from maxkcut import *
 import numpy as np
 from qiskit import *
 
-class TestQAOA(unittest.TestCase):
+class TestMaxKCut(unittest.TestCase):
 
     def test_kBits_MaxKCut(self):
         self.assertEqual(kBits_MaxKCut(2), 1)
