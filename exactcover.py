@@ -77,7 +77,7 @@ def createCircuit_ExactCover(x, depth, options=None):
     circ.measure(q, c)
     return circ
 
-def cost_exactCover(binstring, FR, CR, mu):
+def cost_exactCover(binstring, FR, CR = None, mu = 1):
 
     # Reverse string since qiskit uses ordering MSB ... LSB
     a = np.array(list(map(int,binstring[::-1])))
@@ -134,6 +134,15 @@ def is_Solution(binstring, FR):
     a = np.array(list(map(int,binstring[::-1])))
     return np.all(np.sum(FR*a,1)-1 == 0)
 
+#def is_Solution(binstring, FR):
+#    # This implementation fails the unittests 
+#    rN=FR.shape[1]### number of routes
+#    fn=FR.shape[0]### number of flights
+#    a=np.zeros(rN)
+#    for i in np.arange(len(binstring)):
+#        ### inverse order, because qiskit order is $q_n q_{n-1} .... q_0$
+#        a[len(binstring)-i-1]=int(binstring[i])
+#    return np.sum(np.sum(FR*a,1)-1)==0
 
 def successProbability(experiment_results, options=None):
 
