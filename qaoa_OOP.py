@@ -14,16 +14,21 @@ import itertools
 class QAOABase:
     
     def __init__(self,options = None):
+        self.options = options
+
+        self.params        = dict()
+        self.E             = dict()
+        self.best          = dict()
+
+        self.reset_bookkeeping_params()
+
+    def reset_bookkeeping_params(self):
         
-        self.options       = options
         self.g_it          = 0
         self.g_values      = dict()
         self.g_best_values = dict()
         self.g_params      = dict()
         
-        self.params        = dict()
-        self.E             = dict()
-        self.best          = dict()
 
     # -----------------------------------------
     # Methods a child would have to implement:
@@ -76,7 +81,7 @@ class QAOABase:
         
         return x.flatten()
 
-    def save_current_params(self):
+    def save_best_params(self):
 
         # Find the best value along the path
         ind = max(self.g_values, key = self.g_values.get)
@@ -163,12 +168,19 @@ class QAOABase:
         for rep in range(self.repeats):
             print(f"Depth = {self.depth}, Rep = {rep + 1}")
 
-            res = optimize.minimize(self.getval,
-                                    x0 = x0,
-                                    method = self.optmethod,
-                                    options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})
+            # No need to keep track of the optimisation result, as the getval-function
+            # is required to update the member variables g_values, g_best_values, g_params
+            # in each iteration, so that multiple repetitions can be performed and compared.
+            # 
+            # The function save_best_params() will ensure the best of each repetition will
+            # be used further. 
+            
+            _ = optimize.minimize(self.getval,
+                                  x0 = x0,
+                                  method = self.optmethod,
+                                  options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})
 
-        self.save_current_params()
+        self.save_best_params()
 
         while self.depth < self.max_depth:
 
@@ -178,19 +190,16 @@ class QAOABase:
 
             # Reset the current book-keeping variables for each depth
                 
-            self.g_it          = 0
-            self.g_values      = dict()
-            self.g_best_values = dict()
-            self.g_params      = dict()
+            self.reset_bookkeeping_params()
 
             for rep in range(self.repeats):
                 print(f"Depth = {self.depth}, Rep = {rep + 1}")
-                res = optimize.minimize(self.getval,
-                                        x0 = x0,
-                                        method = self.optmethod,
-                                        options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})
+                _ = optimize.minimize(self.getval,
+                                      x0 = x0,
+                                      method = self.optmethod,
+                                      options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})
 
-            self.save_current_params()
+            self.save_best_params()
 
         return Elandscape, self.params, self.E, self.best
             
@@ -235,7 +244,9 @@ class QAOAStandard(QAOABase):
 
     def getval(self, params):
         """
-        Objective function to use in the minimizer.
+        Objective function to use in the minimizer. Saves in each iteration the 
+        parameters and the function values in the member variables whose name starts 
+        with g_ , i.e. what previously was the global book-keeping variables.
 
         Parameters
         ----------

@@ -3,7 +3,8 @@ from qaoa_OOP import *
 class QAOATailAssignment(QAOAStandard):
 
     def __init__(self,options):
-        super().__init__(options['CR'].size, options)
+        number_of_qubits = options['CR'].size 
+        super().__init__(number_of_qubits, options)
 
         # Vectorized functions for the cost and is_solution:
         # Very useful for simulation with the statevector, as it
@@ -182,7 +183,7 @@ class QAOATailAssignment(QAOAStandard):
         
         self.depth = 1
         while self.depth <= self.max_depth:
-
+        
             qc  = self.createCircuit(self.params[f'xL_d{self.depth}'])
             job = execute(qc,
                           backend = self.backend,
@@ -191,13 +192,20 @@ class QAOATailAssignment(QAOAStandard):
             
             SP[self.depth - 1] = self.successProbability(job)
 
-            statevector = job.result().get_statevector()
-            #probs       = statevector.conjugate() # temporarily save the conjugated statevector here
-            #np.multiply(statevector, probs, out = probs)
+            if "statevector" in self.backend.name().split('_'):
+                
+                statevector = job.result().get_statevector()
+                probs = (np.abs(statevector))**2
+                
+                C[self.depth - 1 ] = self.vector_cost(self.state_strings) @ probs
 
-            probs = (np.abs(statevector))**2
-            
-            C[self.depth - 1 ] = self.vector_cost(self.state_strings) @ probs
+            else:
+
+                counts            = job.result().get_counts()
+                binstrings        = np.array(list(counts.keys()))
+                counts_per_string = np.array(list(counts.values()))
+                
+                C[self.depth - 1] = self.vector_cost(binstrings) @ counts_per_string / self.shots
 
             self.depth += 1
         if plot:
@@ -275,15 +283,13 @@ class QAOATailAssignment(QAOAStandard):
         expectations = np.zeros(len(experiment_results))
 
         ## Simulation done with statevector
-        ## Much faster than the latter, as many operations are
-        ## vectorized here and don't depend on iterating through dictionaries
+        ## Much faster than doing it with other simulators in this implementation,
+        ## as many operations are  vectorized here and don't depend on iterating through
+        ## dictionaries
         
         if "statevector" in self.backend.name().split('_'):
 
             statevector = job.result().get_statevector()
-            #probs       = statevector.conjugate() # temporarily save the conjugated statevector here
-            #np.multiply(statevector, probs, out = probs)
-
             probs = np.abs(statevector)**2
 
             costs = self.vector_cost(self.state_strings)
@@ -294,7 +300,7 @@ class QAOATailAssignment(QAOAStandard):
 
             expectations[0] = E 
 
-        ## Simulation done with noisy simulation
+        ## Simulation done with other simulators
         
         else:
             
