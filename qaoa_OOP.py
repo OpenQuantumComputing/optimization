@@ -49,7 +49,7 @@ class QAOABase:
         raise NotImplementedError
 
     # -----------------------------------------
-
+    
     def interp_init(self):
 
         x_prev = self.params[f'xL_d{self.depth - 1}']
@@ -65,7 +65,8 @@ class QAOABase:
         #    gamma_1 beta_1 gamma-2 beta_2 ...
         # Which is what we want for the createCircuit method called in get-val
 
-        p      = self.depth - 1
+        # Hacky way of not having to refer to self.depth here
+        p      = np.size(x_prev) // self.q
         
         x_prev = x_prev.reshape((p,self.q))
         x      = np.zeros((p+1,self.q))
@@ -162,48 +163,38 @@ class QAOABase:
         # Calculate energy_landscape - global optimisation 
 
         Elandscape, x0 = self.get_energy_landscape()
-
-        # Local optimisation
-
-        for rep in range(self.repeats):
-            print(f"Depth = {self.depth}, Rep = {rep + 1}")
-
-            # No need to keep track of the optimisation result, as the getval-function
-            # is required to update the member variables g_values, g_best_values, g_params
-            # in each iteration, so that multiple repetitions can be performed and compared.
-            # 
-            # The function save_best_params() will ensure the best of each repetition will
-            # be used further. 
-            
-            _ = optimize.minimize(self.getval,
-                                  x0 = x0,
-                                  method = self.optmethod,
-                                  options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})
-
-        self.save_best_params()
-
+        
         while self.depth < self.max_depth:
-
-            self.depth += 1
-
-            x0 = self.interp_init()
-
+           
+                            
             # Reset the current book-keeping variables for each depth
-                
             self.reset_bookkeeping_params()
+
+            # Local optimisation
 
             for rep in range(self.repeats):
                 print(f"Depth = {self.depth}, Rep = {rep + 1}")
+
+                # No need to keep track of the optimisation result, as the getval-function
+                # is required to update the member variables g_values, g_best_values, g_params
+                # among all iterations, so that multiple repetitions can be performed and compared.
+                # 
+                # The function save_best_params() will ensure the best of each repetition will
+                # be used further.
+                
                 _ = optimize.minimize(self.getval,
                                       x0 = x0,
                                       method = self.optmethod,
                                       options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})
-
+            
             self.save_best_params()
+            self.depth += 1
+            
+            # Extrapolate the parameters to the next depth
+            x0 = self.interp_init()
 
         return Elandscape, self.params, self.E, self.best
             
-        
             
 class QAOAStandard(QAOABase):
 
