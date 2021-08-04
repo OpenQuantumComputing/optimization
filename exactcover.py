@@ -1,6 +1,8 @@
 from qiskit import QuantumRegister, ClassicalRegister, QuantumCircuit
 import numpy as np
 
+from tqdm import tqdm # progress bar
+
 #import os
 #import sys
 #sys.path.append('../')
@@ -22,12 +24,14 @@ def createCircuit_ExactCover(x, depth, options=None):
     CR is a vector of route costs [c1 ... cN] where c1 is the cost of route r1 
     """
 
-    FR = options.get('FR', None)
-    CR = options.get('CR', None)
+    FR = options.get('FR', None)  # a_fr
+    CR = options.get('CR', None)  # c_r
+    mu = options.get('mu', 1)     # mu - weight of constraint
+    
     usebarrier = options.get('usebarrier', False)
     name = options.get('name', None)
 
-    fn=FR.shape[0]### number of flights
+    fN=FR.shape[0]### number of flights
     rN=FR.shape[1]### number of routes
 
     q = QuantumRegister(rN)
@@ -36,25 +40,25 @@ def createCircuit_ExactCover(x, depth, options=None):
     circ.h(range(rN))
 
     for d in range(depth):
+        
         gamma = x[2 * d]
         beta = x[2 * d + 1]
+        
         for i in range(rN):
             w=0
-            for j in range(fn):
-                w += .5*FR[j,i]*(np.sum(FR[j,:])-2)
+            for j in range(fN):
+                w += .5 * mu * FR[j,i]*(np.sum(FR[j,:])-2)
             if CR is not None:
-                w += .25*CR[i]**2
+                w += .25 * CR[i]**2
             if abs(w)>1e-14:
                 wg = w * gamma
                 circ.rz(wg, q[i])
             ###
             for j in range(i+1, rN):
                 w=0
-                for k in range(fn):
-                    w += 0.5*FR[k,i]*FR[k,j]
-                if CR is not None:
-                    if (i == j):
-                        w += 0.25*CR[i]**2
+                for k in range(fN):
+                    w += 0.5 * mu * FR[k,i]*FR[k,j]
+                    
                 if w>0:
                     wg = w * gamma
                     circ.cx(q[i], q[j])
@@ -67,22 +71,21 @@ def createCircuit_ExactCover(x, depth, options=None):
                     if usebarrier:
                         circ.barrier()
 
-        circ.rx(-2 * beta, range(rN))
+        circ.rx(- 2 * beta, range(rN))
         if usebarrier:
             circ.barrier()
     circ.measure(q, c)
     return circ
 
-def cost_exactCover(binstring, FR, CR):
-    rN=FR.shape[1]### number of routes
-    a=np.zeros(rN)
-    for i in np.arange(len(binstring)):
-        ### inverse order, because qiskit order is $q_n q_{n-1} .... q_0$
-        a[len(binstring)-i-1]=int(binstring[i])
+def cost_exactCover(binstring, FR, CR = None, mu = 1):
+
+    # Reverse string since qiskit uses ordering MSB ... LSB
+    a = np.array(list(map(int,binstring[::-1])))
+    
     if CR is None:
-        return -np.sum((np.sum(FR*a,1) -1)**2)
+        return - mu * np.sum((np.sum(FR*a,1) -1)**2)
     else:
-        return -np.sum((np.sum(FR*a,1) -1)**2) - np.sum(a*(CR**2))
+        return - mu * np.sum((np.sum(FR*a,1) -1)**2) - np.sum(a*(CR**2))
 
 def measurementStatistics_ExactCover(experiment_results, options=None):
     """
@@ -96,7 +99,9 @@ def measurementStatistics_ExactCover(experiment_results, options=None):
 
     FR = options.get('FR', None)
     CR = options.get('CR', None)
-    rN=FR.shape[1]### number of routes
+    mu = options.get('mu', 1)
+    
+    rN = FR.shape[1] ### number of routes
 
     cost_best = -np.inf
 
@@ -111,7 +116,7 @@ def measurementStatistics_ExactCover(experiment_results, options=None):
         for hexkey in list(counts.keys()):
             count = counts[hexkey]
             binstring = "{0:b}".format(int(hexkey,0)).zfill(rN)
-            cost = cost_exactCover(binstring, FR, CR)
+            cost = cost_exactCover(binstring, FR, CR, mu)
             cost_best = max(cost_best, cost)
             E += cost*count/n_shots
             E2 += cost**2*count/n_shots
@@ -126,20 +131,24 @@ def measurementStatistics_ExactCover(experiment_results, options=None):
 
 
 def is_Solution(binstring, FR):
-    rN=FR.shape[1]### number of routes
-    fn=FR.shape[0]### number of flights
-    a=np.zeros(rN)
-    for i in np.arange(len(binstring)):
-        ### inverse order, because qiskit order is $q_n q_{n-1} .... q_0$
-        a[len(binstring)-i-1]=int(binstring[i])
-    return np.sum(np.sum(FR*a,1)-1)==0
+    a = np.array(list(map(int,binstring[::-1])))
+    return np.all(np.sum(FR*a,1)-1 == 0)
 
+#def is_Solution(binstring, FR):
+#    # This implementation fails the unittests 
+#    rN=FR.shape[1]### number of routes
+#    fn=FR.shape[0]### number of flights
+#    a=np.zeros(rN)
+#    for i in np.arange(len(binstring)):
+#        ### inverse order, because qiskit order is $q_n q_{n-1} .... q_0$
+#        a[len(binstring)-i-1]=int(binstring[i])
+#    return np.sum(np.sum(FR*a,1)-1)==0
 
 def successProbability(experiment_results, options=None):
 
     FR = options.get('FR', None)
     CR = options.get('CR', None)
-    rN=FR.shape[1]
+    rN = FR.shape[1]
 
     success_prob = []
 

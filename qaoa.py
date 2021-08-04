@@ -64,7 +64,10 @@ def runQAOA(createCircuit, measurementStatistics, backend, gamma_n, beta_n, gamm
     print("Calculating Energy landscape...")
     gamma_grid = np.linspace(0, gamma_max, gamma_n)
     beta_grid = np.linspace(0, beta_max, beta_n)
-    Elandscapefile="../data/sample_graphs/"+name+"_Elandscape.npy"
+
+    data_path = "../data/sample_graphs/"
+    
+    Elandscapefile= data_path + name+"_Elandscape.npy"
     if not rerun and os.path.isfile(Elandscapefile):
         Elandscape = np.load(Elandscapefile)
     else:
@@ -92,6 +95,8 @@ def runQAOA(createCircuit, measurementStatistics, backend, gamma_n, beta_n, gamm
                     #job.error_message()
                     e,_,_ = measurementStatistics(job.result().results, options=options)
                     Elandscape[b,g] = -e[0]
+        if not os.path.exists(data_path):
+            os.makedirs(data_path)
         np.save(Elandscapefile, Elandscape)
     print("Calculating Energy landscape done")
 
