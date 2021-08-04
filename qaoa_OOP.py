@@ -164,7 +164,7 @@ class QAOABase:
 
         Elandscape, x0 = self.get_energy_landscape()
         
-        while self.depth < self.max_depth:
+        while self.depth <= self.max_depth:
            
                             
             # Reset the current book-keeping variables for each depth
