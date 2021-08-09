@@ -320,6 +320,48 @@ class QAOATailAssignment(QAOAStandard):
 
         return expectations, None , cost_best
 
+class QAOAExactCover(QAOATailAssignment):
+
+    def __init__(self, options = None):
+
+        # Exactly the same as the tail assignment class, except we
+        # force the weights to be 0. 
+
+        CR = np.zeros_like(options['FR'][0,:])
+        options['CR'] = CR
+
+        self.tol = options.get('tol', 0.9)
+        
+        super().__init__(options)
+
+    def cost(self, binstring):
+        # Reverse string since qiskit uses ordering MSB ... LSB
+        x = np.array(list(map(int,binstring[::-1])))
+        return - (  self.mu * np.sum((1 - (self.FR @ x))**2) )
+        
+    def apply_hamiltonian(self,gamma):
+        # The hamiltonian in this case is only the exact cover part
+        super().apply_exco(gamma)
+
+    def continue_simulation(self):
+        """
+        Terminate the optimisation loop if the success probability of 
+        the previous iteration is higher than the tolerance provided.
+        If the depth exceeds max_depth, then terminate anyways.
+
+        """
+        if self.depth <= self.max_depth:
+            job = execute(self.qc,
+                          backend = self.backend,
+                          noise_model = self.noise_model,
+                          shots = self.shots)
+
+            sp = self.successProbability(job)
+
+            return sp < self.tol
+        else:
+            return False
+        
 
 class TailAssignmentInterlaced(QAOATailAssignment):
 
@@ -428,7 +470,7 @@ class TailAssignmentSepDisc(QAOATailAssignment):
 
             # Add the exact cover part of the circuit to the beginning
             # inplace = True ensures that the result is saved in self.qc
-            self.qc.compose(self.qc_exco, inplace = True)
+            self.qc.compose(self.qc_exco.copy(), inplace = True)
 
             
     def mix_states(self,beta):
@@ -442,8 +484,8 @@ class TailAssignmentSepDisc(QAOATailAssignment):
             # Try different variants here
             
             super().mix_states( + beta)
-            self.qc.compose(self.qc_exco, inplace = True)
-            super().mix_states( + beta)
+            self.qc.compose(self.qc_exco.copy(), inplace = True)
+            super().mix_states( - beta)
             #self.qc.compose(self.qc_exco, inplace = True)
 
     def new_depth_init(self):
@@ -620,3 +662,4 @@ class TailAssignmentSepDisc(QAOATailAssignment):
             plot_H_prob(self,SP,C, savefig)
 
         return SP, C
+

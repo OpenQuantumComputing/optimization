@@ -137,6 +137,14 @@ class QAOABase:
         self.q         = self.params_ll.size
 
         assert( self.params_ll.size == self.params_ul.size == self.params_n.size)
+
+    def continue_simulation(self):
+        """
+        Boolean function, providing a critetion for continuing the simulation loop, 
+        may be overridden by a child.
+
+        """
+        return self.depth <= self.max_depth
         
     def simulate(self, **simulation_args):
 
@@ -164,7 +172,7 @@ class QAOABase:
 
         Elandscape, x0 = self.get_energy_landscape()
         
-        while self.depth <= self.max_depth:
+        while self.continue_simulation():
            
                             
             # Reset the current book-keeping variables for each depth
@@ -200,7 +208,10 @@ class QAOAStandard(QAOABase):
 
     def __init__(self,qubits,options = None):
         super().__init__(options)
-        self.generate_state_strings(qubits) 
+        self.generate_state_strings(qubits)
+
+        # If a start circuit is provided, use this in self.initial_state(qubits)
+        self.start_circuit = options.get('start_circuit', None)
         
     def generate_state_strings(self, qubits):
         """
@@ -227,7 +238,11 @@ class QAOAStandard(QAOABase):
         c = ClassicalRegister(qubits)
         qc = QuantumCircuit(q,c, name = self.options.get('name', None))
 
-        qc.h(range(qubits))
+        # If provided with a start_circuit, use this instead of |+>^n
+        if self.start_circuit is not None:
+            qc.compose(self.start_circuit, inplace = True)
+        else:
+            qc.h(range(qubits))
 
         self.q_register = q
         self.c_register = c
