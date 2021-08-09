@@ -1,5 +1,8 @@
 import numpy as np
-from tailassignment_loader import * 
+import sys
+
+sys.path.append('../')
+from data.tailassignment_loader import * 
 
 def decompose_problem(FR):
 
@@ -30,7 +33,8 @@ if __name__ == "__main__":
     flights   = 24
     solutions = 3
 
-    FR, CR, best_sol = load_FR_CR(f'../data/FRCR_{instances}_{flights}_{solutions}.txt')
+    path_to_examples = "../data/tailassignment_samples/"
+    FR, CR, best_sol = load_FR_CR(path_to_examples + f'FRCR_{instances}_{flights}_{solutions}.txt')
 
     ones_ind, compatible_routes, covered_flights = decompose_problem(FR)
 
