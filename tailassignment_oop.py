@@ -231,7 +231,7 @@ class QAOATailAssignment(QAOAStandard):
                 if self.state_strings[best_sol] not in binstrings:
                     P[self.depth - 1] = 0
                 else:
-                    P[self.depth - 1] = counts_per_string[binstrings == self.state_string[best_sol]] / self.shots
+                    P[self.depth - 1] = counts_per_string[binstrings == self.state_string[best_sol]][0] / self.shots
         
             self.depth += 1
         if plot:
