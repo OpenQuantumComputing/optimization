@@ -71,11 +71,17 @@ class QAOABase:
             circ_tmp   = self.qc
  
         # create a circuit with self.q number of parameters, all ones
+        # set usebarrier to False when calculating the depth
+        usebarrier = self.options['usebarrier']
+        self.usebarrier = False
+        
         qc = self.createCircuit(np.ones(self.q))
 
+        self.options['usebarrier'] = usebarrier
+        
         # Transpiling circuit
         basis  = ['cx', 'id', 'rz', 'sx','x']
-        new_qc = transpile(qc,basis_gates = basis, optimization_level=0)
+        new_qc = transpile(qc,basis_gates = basis, optimization_level=1)
         
         depth  = new_qc.depth()
 
@@ -98,18 +104,20 @@ class QAOABase:
         """
         
         # createCircuit modifies self.qc, so save this temporarily
-        circ_tmp   = self.qc
+        if hasattr(self, "qc"):
+            circ_tmp   = self.qc
 
         # create a circuit with self.q number of parameters, all ones
         qc = self.createCircuit(np.ones(self.q))
 
         # Transpiling circuit
         basis  = ['cx', 'id', 'rz', 'sx','x']
-        new_qc = transpile(qc,basis_gates = basis, optimization_level=0)
+        new_qc = transpile(qc,basis_gates = basis, optimization_level=1)
 
         num_cx = new_qc.count_ops()['cx']
 
-        self.qc = circ_tmp
+        if hasattr(self, "qc"):
+            self.qc = circ_tmp
 
         return num_cx
             
@@ -379,7 +387,3 @@ class QAOAStandard(QAOABase):
         self.g_params[str(self.g_it)]      = params
 
         return -val[0]
-
-
-
-
