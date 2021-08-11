@@ -73,7 +73,8 @@ class QAOABase:
         # create a circuit with self.q number of parameters, all ones
         # set usebarrier to False when calculating the depth
         usebarrier = self.options['usebarrier']
-        self.usebarrier = False
+        
+        self.options['usebarrier'] = False
         
         qc = self.createCircuit(np.ones(self.q))
 
