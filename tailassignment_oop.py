@@ -174,7 +174,7 @@ class QAOATailAssignment(QAOAStandard):
 
         return self.qc
 
-    def simulation_statistics(self, plot = True, savefig = None):
+        def simulation_statistics(self, plot = True, savefig = None):
         """
         Do simulation again with optimal found parameters and 
         return the success probability together with the average hamiltonian.
@@ -231,7 +231,7 @@ class QAOATailAssignment(QAOAStandard):
                 if self.state_strings[best_sol] not in binstrings:
                     P[self.depth - 1] = 0
                 else:
-                    P[self.depth - 1] = counts_per_string[binstrings == self.state_string[best_sol]][0] / self.shots
+                    P[self.depth - 1] = counts_per_string[ binstrings == self.state_strings[best_sol] ][0] / self.shots
         
             self.depth += 1
         if plot:
@@ -279,8 +279,8 @@ class QAOATailAssignment(QAOAStandard):
                 counts = result.data.counts
                 for hexkey in list(counts.keys()):
                     count = counts[hexkey]
-                    binstring = "{0:b}".format(int(hexkey,0)).zfill(rN)
-                    if is_Solution(binstring, FR):
+                    binstring = "{0:b}".format(int(hexkey,0)).zfill(self.R)
+                    if self.is_solution(binstring):
                         s_prob += count/n_shots
             
         return s_prob
