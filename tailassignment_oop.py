@@ -174,7 +174,7 @@ class QAOATailAssignment(QAOAStandard):
 
         return self.qc
 
-        def simulation_statistics(self, plot = True, savefig = None):
+    def simulation_statistics(self, plot = True, savefig = None):
         """
         Do simulation again with optimal found parameters and 
         return the success probability together with the average hamiltonian.
