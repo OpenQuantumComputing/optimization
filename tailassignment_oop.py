@@ -454,3 +454,206 @@ class TailAssignmentInterlaced(QAOATailAssignment):
             self.qc.measure(self.q_register,self.c_register)
 
         return self.qc
+
+
+
+
+class TailAssignmentNFam(QAOATailAssignment):
+    """
+    This class implements the freedom for the QAOA to rotate each qubit around a different axis in the xy-plane when mixing.
+    The axis is decided by one variational parameter per qubit which is optimized along with the other variational parameters.
+    For all layers at a given depth the qubit rotates around the same axis.
+    This is the NFam from https://arxiv.org/abs/2107.13129.
+    """
+
+    def __init__(self,options):
+        super().__init__(options)
+
+        #Need an initial axis for the mixer to rotate around
+        #This can be chosen in options, or defaults to the (1,1) axis
+        self.init_thetas = options.get('init_thetas', np.zeros(self.FR.shape[1])+np.pi/4)
+    def mix_states(self,beta, thetas):
+        """
+        Applies unitary evolution of mixer hamiltonian with
+        time parameter beta
+
+        Parameters
+        ----------
+        beta : float
+            Time/angle for applying hamiltonian.
+        thetas : array of floats
+            Angles deciding which axis to rotate around
+
+        """
+        for i in range(self.FR.shape[1]):
+            if np.abs(2 * beta * np.cos(thetas[i]))>1e-6:
+                self.qc.rx( - 2 * beta * np.cos(thetas[i]), self.q_register[i] )
+            if np.abs(2 * beta * np.sin(thetas[i]))>1e-6:
+                self.qc.ry( - 2 * beta * np.sin(thetas[i]), self.q_register[i] )
+
+
+    def createCircuit(self, params):
+
+        """
+        Implements the ciruit for the tail assignment problem, with two parameters
+        and an extra number of params equvalent to the number of qubits
+        Parameters
+        ----------
+        params : array
+            variational parameters theta_1, ...theta_n, gamma_1 beta_1 , ... , gamma_p beta_p
+            except for in the first layer when it only contains gamma_1 beta_1 to allow for a grid search
+
+        Returns
+        -------
+        qc : QuantumCircuit
+
+        """
+
+        self.initial_state(self.R)
+        rN = self.FR.shape[1]
+        if self.depth==1:
+            #Sets the correct params, and the initial theta values
+            gammas = params[::2]
+            betas  = params[1::2]
+            thetas = self.init_thetas
+        else:
+            #Picks out the rotation angles first and the sets the rest of the params as usual
+            thetas = params[:rN]
+            gammas = params[rN::2]
+            betas  = params[rN + 1::2]
+
+        for d in range(self.depth):
+
+            gamma = gammas[d]
+            beta  = betas[d]
+
+            # Hamiltonian - cost + constraint
+            self.apply_hamiltonian(gamma)
+
+            if self.options['usebarrier']:
+                self.qc.barrier()
+
+            # Apply mixer U(beta, thetas) at the end
+            self.mix_states(beta, thetas)
+
+            if self.options['usebarrier']:
+                self.qc.barrier()
+
+        if "statevector" not in self.backend.name().split('_'):
+            # Do not measure at the end of the circuit if using a
+            # statevector simulation
+            self.qc.measure(self.q_register,self.c_register)
+
+        return self.qc
+
+    def interp_init(self):
+        x_prev_0 = self.params[f'xL_d{self.depth - 1}']
+        print(f"P = {x_prev_0}")
+        rN = self.FR.shape[1]
+
+        # Minimize needs one-dimensional input, but the interpolation of the
+        # parameters can be done with a multidimensional input
+        #
+        #    gamma_1 gamma_2 gamma_3 ...
+        #    beta_1  beta_2  beta_3  ...
+        #    ...
+        # The resulting flattened vector will be
+        #    theta_1, .. theta_n, gamma_1 beta_1 gamma-2 beta_2 ...
+        # Which is what we want for the createCircuit method called in get-val
+
+        p      = self.depth - 1
+        if self.depth > 2:
+            #Updates all params according to heuristic, except the theta values as they are not part of the heuristic.
+            #The theta values are the first rN values
+            x_prev = x_prev_0[rN:].reshape((p,self.q))
+        else:
+            #For the first update the theta values need to be added seperately
+            x_prev_0 = self.init_thetas
+            x_prev = self.params[f'xL_d{self.depth - 1}']
+        x      = np.zeros((p+1,self.q))
+        x_prev = x_prev.reshape((p,self.q))
+        x[0,:] = x_prev[0,:]
+
+        for i in range(2,p+1):
+            x[i - 1,:] = (i - 1)/p  * x_prev[i-2,:] + (p - i + 1)/p * x_prev[i-1,:]
+
+        x[p,:] = x_prev[p-1,:]
+        print(f"P_ = {x.flatten()}")
+        self.params[f'x0_d{self.depth}'] = x.flatten()
+
+        return np.append(x_prev_0[:rN], x.flatten())
+
+
+class TailAssignmentInterlacedNFam(TailAssignmentXYPlane):
+    """
+    This class extends the NFam from https://arxiv.org/abs/2107.13129 to also include our interlaced method.
+    """
+
+
+    def createCircuit(self, params):
+
+        """
+        Implements the ciruit for the tail assignment problem, with three parameters
+        and an extra number of params equvalent to the number of qubits
+        Parameters
+        ----------
+        params : array
+            variational parameters theta_1, ..., theta_n gamma_1 beta_1 delta_1 , ... , gamma_p beta_p delta_p
+
+        Returns
+        -------
+        qc : QuantumCircuit
+
+        """
+
+        self.initial_state(self.R)
+        rN = self.FR.shape[1]
+        if self.depth==1:
+            #Sets the correct params, and the initial theta values
+            gammas = params[::3]
+            betas  = params[1::3]
+            deltas = params[2::3]
+            thetas = self.init_thetas
+        else:
+            #Picks out the rotation angles first and the sets the rest of the params as usual
+            thetas = params[:rN]
+            gammas = params[rN::3]
+            betas  = params[rN + 1::3]
+            deltas  = params[rN + 2::3]
+
+
+        for d in range(self.depth):
+
+            gamma = gammas[d]
+            beta  = betas[d]
+            delta = deltas[d]
+
+            # Hamiltonian - weights
+            self.apply_cost(delta)
+
+            if self.options['usebarrier']:
+                self.qc.barrier()
+
+             # Apply mixer U(beta, thetas) inbetween hamiltonians
+            self.mix_states(beta, thetas)
+
+            if self.options['usebarrier']:
+                self.qc.barrier()
+
+            # Hamiltonian - constraints
+            self.apply_exco(gamma)
+
+            if self.options['usebarrier']:
+                self.qc.barrier()
+            # Apply mixer U(beta, thetas) at the end
+            self.mix_states(beta, thetas)
+
+            if self.options['usebarrier']:
+                self.qc.barrier()
+
+        if "statevector" not in self.backend.name().split('_'):
+            # Do not measure at the end of the circuit if using a
+            # statevector simulation
+            self.qc.measure(self.q_register,self.c_register)
+
+        return self.qc
