@@ -152,7 +152,6 @@ class QAOATailAssignment(QAOAStandard):
 
             # Hamiltonian - cost + constraint
             self.apply_hamiltonian(gamma)
-            
             # This is an equivalent implementation, but requires more gates.
             # as the h-terms are not collected together
             #self.apply_cost(gamma)
@@ -174,7 +173,7 @@ class QAOATailAssignment(QAOAStandard):
 
         return self.qc
 
-    def simulation_statistics(self, plot = True, savefig = None):
+    def simulation_statistics(self, best_sol = None , plot = True, savefig = None):
         """
         Do simulation again with optimal found parameters and 
         return the success probability together with the average hamiltonian.
@@ -199,9 +198,17 @@ class QAOATailAssignment(QAOAStandard):
         SP = np.zeros(self.max_depth)
         C  = np.zeros(self.max_depth)
         P  = np.zeros(self.max_depth)
+
+        # Provide the optimal solution if not running a statevector simulation
+        # The simulation statistics depends on either using the statevector simulator
+        # or explicitly providing the best solution as an argument to this function.
         
-        best_sol = np.argmax( self.vector_cost(self.state_strings) )
+        assert("statevector" in self.backend.name().split('_') or best_sol != None)
         
+        if best_sol == None:
+            best_index = np.argmax( self.vector_cost(self.state_strings) )
+            best_sol   = self.state_strings[best_index]
+            
         self.depth = 1
         while self.continue_simulation():
         
@@ -219,7 +226,7 @@ class QAOATailAssignment(QAOAStandard):
                 probs = (np.abs(statevector))**2
                         
                 C[self.depth - 1 ] = self.vector_cost(self.state_strings) @ probs
-                P[self.depth - 1 ] = probs[best_sol]
+                P[self.depth - 1 ] = probs[best_index]
             else:
 
                 counts            = job.result().get_counts()
@@ -228,10 +235,10 @@ class QAOATailAssignment(QAOAStandard):
 
                 C[self.depth - 1] = self.vector_cost(binstrings) @ counts_per_string / self.shots
 
-                if self.state_strings[best_sol] not in binstrings:
+                if best_sol not in binstrings:
                     P[self.depth - 1] = 0
                 else:
-                    P[self.depth - 1] = counts_per_string[ binstrings == self.state_strings[best_sol] ][0] / self.shots
+                    P[self.depth - 1] = counts_per_string[ binstrings == best_sol ][0] / self.shots
         
             self.depth += 1
         if plot:

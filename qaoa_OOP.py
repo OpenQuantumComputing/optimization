@@ -5,7 +5,6 @@ sys.path.append('../')
 from qiskit_utilities.utilities import *
 from qiskit import execute
 from qiskit import transpile
-
 from plots import * 
 
 import numpy as np
@@ -52,9 +51,10 @@ class QAOABase:
 
     # -----------------------------------------
 
-    def get_onelayer_depth(self):
+    def get_depth_and_numCX(self):
         """
-        Calculating the depth of the circuit created when self.depth = 1.
+        Calculating the depth and number of cx-gates for full connectivity
+        and 1 layer.
         
         Depth is here a bit ambiguous, but the returned depth referred to 
         denotes the length of the critical path of the circuit, not the depth 
@@ -69,11 +69,13 @@ class QAOABase:
         # createCircuit modifies self.qc, so save this temporarily
         if hasattr(self, "qc"):
             circ_tmp   = self.qc
+            temp_save  = True 
+        else:
+            temp_save  = False
  
         # create a circuit with self.q number of parameters, all ones
         # set usebarrier to False when calculating the depth
         usebarrier = self.options['usebarrier']
-        
         self.options['usebarrier'] = False
         
         qc = self.createCircuit(np.ones(self.q))
@@ -85,42 +87,14 @@ class QAOABase:
         new_qc = transpile(qc,basis_gates = basis, optimization_level=1)
         
         depth  = new_qc.depth()
-
-        if hasattr(self, "qc"):
-            self.qc = circ_tmp
-
-        return depth
-
-    def get_number_of_cx(self):
-        """
-        Calculating the number of cnot-gates in the onelayer circuit, i.e. when self.depth = 1
-        Wraps the method from qiskit_utilities for calculating number of CX gates
-        
-        
-        Returns
-        -------
-        num_cx : int 
-            Number of cx gates in a one-layer circuit
-        
-        """
-        
-        # createCircuit modifies self.qc, so save this temporarily
-        if hasattr(self, "qc"):
-            circ_tmp   = self.qc
-
-        # create a circuit with self.q number of parameters, all ones
-        qc = self.createCircuit(np.ones(self.q))
-
-        # Transpiling circuit
-        basis  = ['cx', 'id', 'rz', 'sx','x']
-        new_qc = transpile(qc,basis_gates = basis, optimization_level=1)
-
         num_cx = new_qc.count_ops()['cx']
 
-        if hasattr(self, "qc"):
+        # If the circuit was temporarily saved when making the circuit,
+        # swap it back again. 
+        if temp_save:
             self.qc = circ_tmp
 
-        return num_cx
+        return depth, num_cx
             
     def interp_init(self):
         """
@@ -306,15 +280,25 @@ class QAOAStandard(QAOABase):
 
     def __init__(self,qubits,options = None):
         super().__init__(options)
-        self.generate_state_strings(qubits)
-
+        
         # If a start circuit is provided, use this in self.initial_state(qubits)
         self.start_circuit = options.get('start_circuit', None)
+        self.qubits = qubits
+
+    def simulate_init(self, **simulation_args):
+        super().simulate_init(**simulation_args)
+
+        # Only create state strings array if using the statevector simulation
+        if "statevector" in self.backend.name().split('_'):
+            self.generate_state_strings(self.qubits)
         
     def generate_state_strings(self, qubits):
         """
         Generates an array of all the state strings in increasing order. 
         Useful for toy examples.
+
+        This should only be done when using the state-vector simulator,
+        so do a call to this function in the simulate_init function.
         
         Parameters
         ----------
