@@ -20,8 +20,7 @@ class QAOATailAssignment(QAOAStandard):
         self.mu         = self.options.get('mu', 1)
 
         self.F, self.R  = np.shape(self.FR)
-
-
+    
     def cost(self,binstring):
         
         # Reverse string since qiskit uses ordering MSB ... LSB
@@ -56,17 +55,22 @@ class QAOATailAssignment(QAOAStandard):
         for r in range(self.R):
             hr = 0.5 * self.mu * self.FR[:,r] @ (np.sum(self.FR,axis = 1) - 2)
 
-            self.qc.rz( gamma * hr, self.q_register[r])
+            # Apply only if hr differs sufficiently from 0
+            if not np.isclose(hr, 0):
+                self.qc.rz( gamma * hr, self.q_register[r])
 
             for r_ in range(r+1,self.R):
                 Jrr_  = 0.5 * self.FR[:,r] @ self.FR[:,r_]
 
                 # Apply U(gamma), coupling part
+                # Only if the coupling constant differs sufficiently from 0
 
-                self.qc.cx(self.q_register[r], self.q_register[r_])
-                self.qc.rz(gamma * Jrr_, self.q_register[r_])
-                self.qc.cx(self.q_register[r], self.q_register[r_])
+                if not np.isclose(Jrr_, 0):
+                    self.qc.cx(self.q_register[r], self.q_register[r_])
+                    self.qc.rz(gamma * Jrr_, self.q_register[r_])
+                    self.qc.cx(self.q_register[r], self.q_register[r_])
 
+                    
     def apply_cost(self,gamma):
         """
         Applies unitary evolution of cost hamiltonian with 
@@ -81,8 +85,10 @@ class QAOATailAssignment(QAOAStandard):
 
         for r in range(self.R):
             hr = 0.5 * self.CR[r]
-
-            self.qc.rz(gamma * hr, self.q_register[r])
+            
+            # Apply only if hr differs sufficiently from 0
+            if not np.isclose(hr, 0):
+                self.qc.rz( gamma * hr, self.q_register[r])
 
     def apply_hamiltonian(self,gamma):
         """
@@ -99,17 +105,24 @@ class QAOATailAssignment(QAOAStandard):
         for r in range(self.R):
             hr = 0.5 * self.CR[r] + 0.5 * self.mu * self.FR[:,r] @ (np.sum(self.FR,axis = 1) - 2)
 
-            self.qc.rz( gamma * hr, self.q_register[r])
+            # Apply only if hr differs sufficiently from 0
+            if not np.isclose(hr, 0):
+                self.qc.rz( gamma * hr, self.q_register[r])
 
             for r_ in range(r+1,self.R):
                 Jrr_  = 0.5 * self.FR[:,r] @ self.FR[:,r_]
 
                 # Apply U(gamma), coupling part
 
-                self.qc.cx(self.q_register[r], self.q_register[r_])
-                self.qc.rz(gamma * Jrr_, self.q_register[r_])
-                self.qc.cx(self.q_register[r], self.q_register[r_])
-            
+                # Apply U(gamma), coupling part
+                # Only if the coupling constant differs sufficiently from 0
+
+                if not np.isclose(Jrr_, 0):
+                    self.qc.cx(self.q_register[r], self.q_register[r_])
+                    self.qc.rz(gamma * Jrr_, self.q_register[r_])
+                    self.qc.cx(self.q_register[r], self.q_register[r_])
+
+                
     def createCircuit(self, params):
 
         """
@@ -130,7 +143,9 @@ class QAOATailAssignment(QAOAStandard):
         gammas = params[::2]
         betas  = params[1::2]
 
-        for d in range(self.depth):
+        D = np.size(gammas)
+
+        for d in range(D):
 
             gamma = gammas[d]
             beta  = betas[d]
@@ -158,7 +173,7 @@ class QAOATailAssignment(QAOAStandard):
 
         return self.qc
 
-    def simulation_statistics(self, plot = True, savefig = None):
+    def simulation_statistics(self, best_sol = None , plot = True, savefig = None):
         """
         Do simulation again with optimal found parameters and 
         return the success probability together with the average hamiltonian.
@@ -176,13 +191,26 @@ class QAOATailAssignment(QAOAStandard):
             Success probability as a function of depth
         C : array
             Total cost as a function of depth.
+        P : array
+            Probability of best state as a function of depth
         """
 
         SP = np.zeros(self.max_depth)
         C  = np.zeros(self.max_depth)
+        P  = np.zeros(self.max_depth)
+
+        # Provide the optimal solution if not running a statevector simulation
+        # The simulation statistics depends on either using the statevector simulator
+        # or explicitly providing the best solution as an argument to this function.
         
+        assert("statevector" in self.backend.name().split('_') or best_sol != None)
+        
+        if best_sol == None:
+            best_index = np.argmax( self.vector_cost(self.state_strings) )
+            best_sol   = self.state_strings[best_index]
+            
         self.depth = 1
-        while self.depth <= self.max_depth:
+        while self.continue_simulation():
         
             qc  = self.createCircuit(self.params[f'xL_d{self.depth}'])
             job = execute(qc,
@@ -191,27 +219,32 @@ class QAOATailAssignment(QAOAStandard):
                           shots = self.shots)
             
             SP[self.depth - 1] = self.successProbability(job)
-
+            
             if "statevector" in self.backend.name().split('_'):
                 
                 statevector = job.result().get_statevector()
                 probs = (np.abs(statevector))**2
-                
+                        
                 C[self.depth - 1 ] = self.vector_cost(self.state_strings) @ probs
-
+                P[self.depth - 1 ] = probs[best_index]
             else:
 
                 counts            = job.result().get_counts()
                 binstrings        = np.array(list(counts.keys()))
                 counts_per_string = np.array(list(counts.values()))
-                
+
                 C[self.depth - 1] = self.vector_cost(binstrings) @ counts_per_string / self.shots
 
+                if best_sol not in binstrings:
+                    P[self.depth - 1] = 0
+                else:
+                    P[self.depth - 1] = counts_per_string[ binstrings == best_sol ][0] / self.shots
+        
             self.depth += 1
         if plot:
             plot_H_prob(self,SP,C, savefig)
 
-        return SP, C
+        return SP, C, P 
 
     def is_solution(self,binstring):
         a = np.array(list(map(int,binstring[::-1])))
@@ -253,8 +286,8 @@ class QAOATailAssignment(QAOAStandard):
                 counts = result.data.counts
                 for hexkey in list(counts.keys()):
                     count = counts[hexkey]
-                    binstring = "{0:b}".format(int(hexkey,0)).zfill(rN)
-                    if is_Solution(binstring, FR):
+                    binstring = "{0:b}".format(int(hexkey,0)).zfill(self.R)
+                    if self.is_solution(binstring):
                         s_prob += count/n_shots
             
         return s_prob
@@ -277,7 +310,6 @@ class QAOATailAssignment(QAOAStandard):
 
         """
 
-        R         = np.size(self.FR[0,:])
         cost_best = - np.inf
         experiment_results = job.result().results
         expectations = np.zeros(len(experiment_results))
@@ -312,7 +344,7 @@ class QAOATailAssignment(QAOAStandard):
 
                for hexkey in list(counts.keys()):
                    count     = counts[hexkey]
-                   binstring = "{0:b}".format(int(hexkey,0)).zfill(R)
+                   binstring = "{0:b}".format(int(hexkey,0)).zfill(self.R)
                    cost      = self.cost(binstring)
                    cost_best = max(cost_best, cost)
                    E        += cost*count/n_shots
@@ -322,6 +354,48 @@ class QAOATailAssignment(QAOAStandard):
 
         return expectations, None , cost_best
 
+class QAOAExactCover(QAOATailAssignment):
+
+    def __init__(self, options = None):
+
+        # Exactly the same as the tail assignment class, except we
+        # force the weights to be 0, even if non-zero weights are provided 
+
+        CR = np.zeros_like(options['FR'][0,:])
+        options['CR'] = CR
+
+        self.tol = options.get('tol', 0.9)
+        
+        super().__init__(options)
+
+    def cost(self, binstring):
+        # Reverse string since qiskit uses ordering MSB ... LSB
+        x = np.array(list(map(int,binstring[::-1])))
+        return - (  self.mu * np.sum((1 - (self.FR @ x))**2) )
+        
+    def apply_hamiltonian(self,gamma):
+        # The hamiltonian in this case is only the exact cover part
+        super().apply_exco(gamma)
+
+    def continue_simulation(self):
+        """
+        Terminate the optimisation loop if the success probability of 
+        the previous iteration is higher than the tolerance provided.
+        If the depth exceeds max_depth, then terminate anyways.
+
+        """
+        if self.depth <= self.max_depth:
+            job = execute(self.qc,
+                          backend = self.backend,
+                          noise_model = self.noise_model,
+                          shots = self.shots)
+
+            sp = self.successProbability(job)
+
+            return sp < self.tol
+        else:
+            return False
+        
 
 class TailAssignmentInterlaced(QAOATailAssignment):
 
@@ -346,7 +420,9 @@ class TailAssignmentInterlaced(QAOATailAssignment):
         betas  = params[1::3]
         deltas = params[2::3]
 
-        for d in range(self.depth):
+        D      = np.size(gammas)
+
+        for d in range(D):
 
             gamma = gammas[d]
             beta  = betas[d]
@@ -378,5 +454,3 @@ class TailAssignmentInterlaced(QAOATailAssignment):
             self.qc.measure(self.q_register,self.c_register)
 
         return self.qc
-
-    

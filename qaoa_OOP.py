@@ -4,6 +4,7 @@ import sys
 sys.path.append('../')
 from qiskit_utilities.utilities import *
 from qiskit import execute
+from qiskit import transpile
 from plots import * 
 
 import numpy as np
@@ -49,8 +50,64 @@ class QAOABase:
         raise NotImplementedError
 
     # -----------------------------------------
-    
+
+    def get_depth_and_numCX(self):
+        """
+        Calculating the depth and number of cx-gates for full connectivity
+        and 1 layer.
+        
+        Depth is here a bit ambiguous, but the returned depth referred to 
+        denotes the length of the critical path of the circuit, not the depth 
+        in the qaoa algorithm.
+
+        Returns
+        -------
+        depth : int
+            Length of the critical path of the one-layer circuit
+
+        """
+        # createCircuit modifies self.qc, so save this temporarily
+        if hasattr(self, "qc"):
+            circ_tmp   = self.qc
+            temp_save  = True 
+        else:
+            temp_save  = False
+ 
+        # create a circuit with self.q number of parameters, all ones
+        # set usebarrier to False when calculating the depth
+        usebarrier = self.options['usebarrier']
+        self.options['usebarrier'] = False
+        
+        qc = self.createCircuit(np.ones(self.q))
+
+        self.options['usebarrier'] = usebarrier
+        
+        # Transpiling circuit
+        basis  = ['cx', 'id', 'rz', 'sx','x']
+        new_qc = transpile(qc,basis_gates = basis, optimization_level=1)
+        
+        depth  = new_qc.depth()
+        num_cx = new_qc.count_ops()['cx']
+
+        # If the circuit was temporarily saved when making the circuit,
+        # swap it back again. 
+        if temp_save:
+            self.qc = circ_tmp
+
+        return depth, num_cx
+            
     def interp_init(self):
+        """
+        Interpolates the current parameters to the next layer
+        according to the procedure INTERP explained in 
+        https://arxiv.org/pdf/1812.01041.pdf
+    
+        Returns
+        -------
+        x.flatten() : array
+            array of length (self.depth)*(self.q) with the parameters for 
+            the next depth of the algorithm.
+        """
 
         x_prev = self.params[f'xL_d{self.depth - 1}']
         print(f"P = {x_prev}")
@@ -94,6 +151,21 @@ class QAOABase:
         self.best[f'{self.depth}']       = self.g_best_values[ind]
 
     def get_energy_landscape(self):
+        """
+        Calculates the energy landscape given the simulation arguments
+        specifying the number of parameters and their upper and lower limits.
+        The method calls the scipy function brute which performs a grid search 
+        over the specified ranges. The brute method also does some additional polishing 
+        in the end.
+
+        Returns
+        -------
+        Jout.T : array
+            Array holding the energy at each point of the grid searched through
+        x0.flatten() : array
+            The parameters minimizing the energy found using brute force. 
+
+        """
 
         print("Calculating energy landscape ...")
 
@@ -137,6 +209,14 @@ class QAOABase:
         self.q         = self.params_ll.size
 
         assert( self.params_ll.size == self.params_ul.size == self.params_n.size)
+
+    def continue_simulation(self):
+        """
+        Boolean function, providing a critetion for continuing the simulation loop, 
+        may be overridden by a child.
+
+        """
+        return self.depth <= self.max_depth
         
     def simulate(self, **simulation_args):
 
@@ -164,7 +244,7 @@ class QAOABase:
 
         Elandscape, x0 = self.get_energy_landscape()
         
-        while self.depth <= self.max_depth:
+        while self.continue_simulation():
            
                             
             # Reset the current book-keeping variables for each depth
@@ -200,12 +280,25 @@ class QAOAStandard(QAOABase):
 
     def __init__(self,qubits,options = None):
         super().__init__(options)
-        self.generate_state_strings(qubits) 
+        
+        # If a start circuit is provided, use this in self.initial_state(qubits)
+        self.start_circuit = options.get('start_circuit', None)
+        self.qubits = qubits
+
+    def simulate_init(self, **simulation_args):
+        super().simulate_init(**simulation_args)
+
+        # Only create state strings array if using the statevector simulation
+        if "statevector" in self.backend.name().split('_'):
+            self.generate_state_strings(self.qubits)
         
     def generate_state_strings(self, qubits):
         """
         Generates an array of all the state strings in increasing order. 
         Useful for toy examples.
+
+        This should only be done when using the state-vector simulator,
+        so do a call to this function in the simulate_init function.
         
         Parameters
         ----------
@@ -227,7 +320,11 @@ class QAOAStandard(QAOABase):
         c = ClassicalRegister(qubits)
         qc = QuantumCircuit(q,c, name = self.options.get('name', None))
 
-        qc.h(range(qubits))
+        # If provided with a start_circuit, use this instead of |+>^n
+        if self.start_circuit is not None:
+            qc.compose(self.start_circuit, inplace = True)
+        else:
+            qc.h(range(qubits))
 
         self.q_register = q
         self.c_register = c
@@ -275,7 +372,3 @@ class QAOAStandard(QAOABase):
         self.g_params[str(self.g_it)]      = params
 
         return -val[0]
-
-
-
-
