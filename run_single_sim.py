@@ -82,7 +82,7 @@ def run_statistics_single(QAOA_version,options, simulation_args, file):
 
     qaoa = QAOA_version(options)
     Elandscape, gammabetas, E, best = qaoa.simulate(**simulation_args)
-    SP, C, P   = qaoa.simulation_statistics( plot = False )
+    SP, C, P   = qaoa.simulation_statistics( plot = True, savefig=path_to_data+filename.split(".npy")[0]+".pdf")
 
     # Normalize the costs
     best_cost = np.max( qaoa.vector_cost(qaoa.state_strings) )
@@ -111,7 +111,7 @@ if __name__ == "__main__":
 
     optmethod  = 'Nelder-Mead'        
     rerun      = True
-    max_depth  = 10
+    max_depth  = 30
 
     simulation_args = dict()
 
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     # run in parallel, e.g. by the simulate.sh script
     
     filename, index = sys.argv[1], sys.argv[2]
-    
+
     SP, C, D, NCx, P = run_statistics_single(QAOATailAssignment,options, simulation_args, filename)
 
     DATA_PATH = "../data/TAstatistics/"
@@ -135,14 +135,14 @@ if __name__ == "__main__":
     if not os.path.isdir(DATA_PATH):
         os.mkdir(DATA_PATH)
 
-    routes = filename.split('_')[1]
-    sols   = filename.split('_')[-2] 
+    # Get last part of filename, and use this for saving
+    file_sign = filename.split('FRCR')[1]
 
-    np.save(DATA_PATH + f"SP_basic_{routes}_{sols}_{index}.npy", SP)
-    np.save(DATA_PATH + f"C_basic_{routes}_{sols}_{index}.npy", C)
-    np.save(DATA_PATH + f"P_basic_{routes}_{sols}_{index}.npy", P)
-    np.save(DATA_PATH + f"D_basic_{routes}_{sols}_{index}.npy", D)
-    np.save(DATA_PATH + f"NCx_basic_{routes}_{sols}_{index}.npy", NCx)
+    np.save(DATA_PATH + f"SP_basic" + file_sign, SP)
+    np.save(DATA_PATH + f"C_basic"  + file_sign, C)
+    np.save(DATA_PATH + f"P_basic"  + file_sign, P)
+    np.save(DATA_PATH + f"D_basic"  + file_sign, D)
+    np.save(DATA_PATH + f"NCx_basic"+ file_sign, NCx)
 
     # New simulation args for the interlaced version
     
@@ -156,7 +156,7 @@ if __name__ == "__main__":
 
     optmethod  = 'Nelder-Mead'        
     rerun      = True
-    max_depth  = 10
+    max_depth  = 20
 
     simulation_args = dict()
     
@@ -172,8 +172,8 @@ if __name__ == "__main__":
     
     SP, C, D, NCx, P = run_statistics_single(TailAssignmentInterlaced, options, simulation_args, filename)
 
-    np.save(DATA_PATH + f"SP_interlaced_{routes}_{sols}_{index}.npy", SP)
-    np.save(DATA_PATH + f"P_interlaced_{routes}_{sols}_{index}.npy", P)
-    np.save(DATA_PATH + f"C_interlaced_{routes}_{sols}_{index}.npy", C)
-    np.save(DATA_PATH + f"D_interlaced_{routes}_{sols}_{index}.npy", D)
-    np.save(DATA_PATH + f"NCx_interlaced_{routes}_{sols}_{index}.npy", NCx)
+    np.save(DATA_PATH + f"SP_interlaced"  + file_sign, SP)
+    np.save(DATA_PATH + f"P_interlaced"   + file_sign, P)
+    np.save(DATA_PATH + f"C_interlaced"   + file_sign, C)
+    np.save(DATA_PATH + f"D_interlaced"   + file_sign, D)
+    np.save(DATA_PATH + f"NCx_interlaced" + file_sign, NCx)

@@ -584,7 +584,7 @@ class TailAssignmentNFam(QAOATailAssignment):
         return np.append(x_prev_0[:rN], x.flatten())
 
 
-class TailAssignmentInterlacedNFam(TailAssignmentXYPlane):
+class TailAssignmentInterlacedNFam(TailAssignmentNFam):
     """
     This class extends the NFam from https://arxiv.org/abs/2107.13129 to also include our interlaced method.
     """
