@@ -38,7 +38,7 @@ def load_problem(routes, sols, index):
     FR, CR = npy_loader(filename)
     return FR, CR
 
-def run_statistics_single(QAOA_version,options, simulation_args, file):
+def run_statistics_single(QAOA_version,options, simulation_args, filename):
     """
     Function for simulating and saving statistics for 
     all the examples in the 'path_to_data' folder with a specified number of 
@@ -52,8 +52,8 @@ def run_statistics_single(QAOA_version,options, simulation_args, file):
         Options for initializing the tailassignment object 
     simulation_args : dict
         Dictionary with simulation options
-    file : string
-        File to open.
+    filename : string
+        name of file to open.
 
     Returns
     -------
@@ -72,7 +72,7 @@ def run_statistics_single(QAOA_version,options, simulation_args, file):
     
     max_depth = simulation_args['max_depth']
     
-    FR, CR = npy_loader(path_to_data + file)
+    FR, CR = npy_loader(path_to_data + filename)
 
     # Normalize weights
     CR /= np.max(CR)
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     # Default options and simulation args
 
     options = dict()
-    options['mu'] = 1
+    options['mu'] = 2.1
     options['usebarrier'] = True
 
     Aer.backends()

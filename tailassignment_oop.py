@@ -57,7 +57,7 @@ class QAOATailAssignment(QAOAStandard):
 
             # Apply only if hr differs sufficiently from 0
             if not np.isclose(hr, 0):
-                self.qc.rz( gamma * hr, self.q_register[r])
+                self.qc.rz( 2*gamma * hr, self.q_register[r])
 
             for r_ in range(r+1,self.R):
                 Jrr_  = 0.5 * self.FR[:,r] @ self.FR[:,r_]
@@ -67,7 +67,7 @@ class QAOATailAssignment(QAOAStandard):
 
                 if not np.isclose(Jrr_, 0):
                     self.qc.cx(self.q_register[r], self.q_register[r_])
-                    self.qc.rz(gamma * Jrr_, self.q_register[r_])
+                    self.qc.rz(2*gamma * Jrr_, self.q_register[r_])
                     self.qc.cx(self.q_register[r], self.q_register[r_])
 
                     
@@ -88,7 +88,7 @@ class QAOATailAssignment(QAOAStandard):
             
             # Apply only if hr differs sufficiently from 0
             if not np.isclose(hr, 0):
-                self.qc.rz( gamma * hr, self.q_register[r])
+                self.qc.rz( 2*gamma * hr, self.q_register[r])
 
     def apply_hamiltonian(self,gamma):
         """
@@ -107,7 +107,7 @@ class QAOATailAssignment(QAOAStandard):
 
             # Apply only if hr differs sufficiently from 0
             if not np.isclose(hr, 0):
-                self.qc.rz( gamma * hr, self.q_register[r])
+                self.qc.rz( 2*gamma * hr, self.q_register[r])
 
             for r_ in range(r+1,self.R):
                 Jrr_  = 0.5 * self.FR[:,r] @ self.FR[:,r_]
@@ -119,7 +119,7 @@ class QAOATailAssignment(QAOAStandard):
 
                 if not np.isclose(Jrr_, 0):
                     self.qc.cx(self.q_register[r], self.q_register[r_])
-                    self.qc.rz(gamma * Jrr_, self.q_register[r_])
+                    self.qc.rz(2*gamma * Jrr_, self.q_register[r_])
                     self.qc.cx(self.q_register[r], self.q_register[r_])
 
                 
