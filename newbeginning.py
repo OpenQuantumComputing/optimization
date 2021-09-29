@@ -22,28 +22,28 @@ class QAOAbase:
             if plotsolutions and excost==0:
                 print(x, (self.CR @ x))
             return  ( (self.CR @ x) + mu *excost  )
-    
-    def measurementStatistics(self, job, n, m, k=None, mu=1):        
+
+    def measurementStatistics(self, job, nb, ng, nd=None, mu=1):
         costs=self.cost_vector(mu)
-        if k is not None:
-            E=np.zeros((n,m))
-            for i in range(n):
-                for j in range(m):
-                    statevector = job.result().results[j+m*i].data.statevector
+        if self.num_params==2:
+            E=np.zeros((nb,ng))
+            for i in range(nb):
+                for j in range(ng):
+                    statevector = job.result().results[j+ng*i].data.statevector
                     probs = np.abs(statevector)**2
                     E[i,j] = costs @ probs[::-1]
         else:
-            E=np.zeros((n,m,k))
-            for i in range(n):
-                for j in range(m):
-                    for l in range(k):
-                        statevector = job.result().results[l+k*(j+m*i)].data.statevector
+            E=np.zeros((nb,ng,nd))
+            for i in range(nb):
+                for j in range(ng):
+                    for l in range(nd):
+                        statevector = job.result().results[l+nd*(j+ng*i)].data.statevector
                         probs = np.abs(statevector)**2
                         E[i,j,l] = costs @ probs[::-1]
     #             print(costs,probs)
         return E
-    
-    
+
+
     def cost_vector(self, mu, plotsolutions=False):
         F, R  = np.shape(self.FR)
         state_strings = np.array([''.join(i) for i in itertools.product('01', repeat= R)])
@@ -54,18 +54,18 @@ class QAOAbase:
         if plotsolutions:
             print("min cost=", np.min(costs))
         return costs
-    
+
     def mix_states(self, qc, beta):
         qc.rx( - 2*beta, range(qc.num_qubits))
         return qc
-    
+
     def apply_exco(self, qc, FR, gamma):
         for r in range(qc.num_qubits):
-            
+
             hr = 0.5 * self.FR[:,r] @ (np.sum(self.FR,axis = 1) - 2)
             if not np.isclose(hr, 0):
                 qc.rz( 2*gamma * hr, range(qc.num_qubits))
-    
+
             for r_ in range(r+1,qc.num_qubits):
                 Jrr_  = 0.5 * self.FR[:,r] @ self.FR[:,r_]
                 if not np.isclose(Jrr_, 0):
@@ -73,7 +73,7 @@ class QAOAbase:
                     qc.rz(2*gamma * Jrr_, r_)
                     qc.cx(r, r_)
         return qc
-    
+
     def apply_cost(self, qc, CR, gamma):
         for r in range(qc.num_qubits):
             hr = 0.5 * self.CR[r]
@@ -81,51 +81,57 @@ class QAOAbase:
                 qc.rz( 2*gamma * hr, r)
         return qc
 
-    def getElandscape(self, backend, mu,useExco=None, beta_max=np.pi,gamma_max=2*np.pi,delta_max=2*np.pi,n=20,m=40,k=40, barrier=False, sv=None):
+    def getElandscape(self, backend, mu,useExco=None, gamma_max=2*np.pi,beta_max=np.pi,delta_max=2*np.pi,ng=40,nb=20,nd=40, barrier=False, sv=None):
         depth=1
         circuits=[]
         if self.num_params==2:
-            for beta in np.linspace(0,beta_max,n,endpoint=False):
-                for gamma in np.linspace(0,gamma_max,m,endpoint=False):
-            
+            for beta in np.linspace(0,beta_max,nb,endpoint=False):
+                for gamma in np.linspace(0,gamma_max,ng,endpoint=False):
+
                     if useExco is not None:
                         qc=self.createCircuit(np.array((gamma,beta)), useExco, barrier=barrier, sv=sv)
                     else:
                         qc=self.createCircuit(np.array((gamma,beta)), mu, depth, barrier=barrier, sv=sv)
-                    
+
                     circuits.append(qc)
         else:
-            for beta in np.linspace(0,beta_max,n,endpoint=False):
-                for gamma in np.linspace(0,gamma_max,m,endpoint=False):
-                    for delta in np.linspace(0,delta_max,k,endpoint=False):
+            for delta in np.linspace(0,delta_max,nd,endpoint=False):
+                for beta in np.linspace(0,beta_max,nb,endpoint=False):
+                    for gamma in np.linspace(0,gamma_max,ng,endpoint=False):
                         qc=self.createCircuit(np.array((gamma,beta,delta)), mu, depth, barrier=barrier, sv=sv)
-                        
+
                         circuits.append(qc)
-                
+
         job = execute(circuits, backend)
-        E = self.measurementStatistics(job, n, m, k, mu=mu)
-    
+        E = self.measurementStatistics(job, nb, ng, nd, mu=mu)
+
         if self.num_params==2:
-            ib,ig=np.where(E==np.min(E))
-            gamma=np.linspace(0,gamma_max,m,endpoint=False)
-            beta=np.linspace(0,beta_max,n,endpoint=False)
-            x0=np.array((gamma[ig],beta[ib]))
+            i_b,i_g=np.where(E==np.min(E))
+            i_b=i_b[0]
+            i_g=i_g[0]
+            gamma=np.linspace(0,gamma_max,ng,endpoint=False)
+            beta=np.linspace(0,beta_max,nb,endpoint=False)
+            x0=np.array((gamma[i_g],beta[i_b]))
+            index=i_g+ng*i_b
         else:
-            ib,ig,ie=np.where(E==np.min(E))
-            gamma=np.linspace(0,gamma_max,m,endpoint=False)
-            beta=np.linspace(0,beta_max,n,endpoint=False)
-            gamma=np.linspace(0,delta,k,endpoint=False)
-            x0=np.array((gamma[ig],beta[ib],delat[ie]))
-        #E[ib,ig],np.min(E)
-        
-        return E, x0, job, ig+m*ib
+            i_b,i_g,i_d=np.where(E==np.min(E))
+            i_b=i_b[0]
+            i_g=i_g[0]
+            i_d=i_d[0]
+            gamma=np.linspace(0,gamma_max,ng,endpoint=False)
+            beta=np.linspace(0,beta_max,nb,endpoint=False)
+            delta=np.linspace(0,delta_max,nd,endpoint=False)
+            x0=np.array((gamma[i_g],beta[i_b],delta[i_d]))
+            index=i_d+nd*(i_g+ng*i_b)
+
+        return E, x0, job, index
 
 
 import matplotlib.pyplot as pl
 
-def getfig(E, beta_max=np.pi,gamma_max=2*np.pi,n=20,m=40):
-    gamma=np.linspace(0,gamma_max,m,endpoint=False)
-    beta=np.linspace(0,beta_max,n,endpoint=False)
+def getfig(E, beta_max=np.pi,gamma_max=2*np.pi,nb=20,ng=40):
+    gamma=np.linspace(0,gamma_max,ng,endpoint=False)
+    beta=np.linspace(0,beta_max,nb,endpoint=False)
     shiftg=0.5*(gamma[1]-gamma[0])
     shiftb=0.5*(beta[1]-beta[0])
 
@@ -148,7 +154,7 @@ def getSpectrum(CR, FR):
     Z=np.array((1,-1))
 
     R=CR.shape[0]
-    
+
     H_cost = np.zeros(2**R)
     H_exco = np.zeros(2**R)
     for r in range(R):
@@ -165,7 +171,7 @@ def getSpectrum(CR, FR):
                     Zr = np.kron(I,Zr)
         H_cost += 0.5*CR[r]*Zr
         H_exco += 0.5 * FR[:,r] @ (np.sum(FR,axis = 1) - 2)*Zr
-    
+
     for r in range(R):
         for r_ in range(r+1,R):
             for i in range(R):
@@ -181,7 +187,7 @@ def getSpectrum(CR, FR):
                         ZZrr_ = np.kron(I,ZZrr_)
             Jrr_  = 0.5 * FR[:,r] @ FR[:,r_]
             H_exco+=Jrr_*ZZrr_
-    
+
     n=100
     e = np.zeros((2**R,n))
     x=np.linspace(0,4,n)
@@ -193,15 +199,14 @@ def getSpectrum(CR, FR):
     #         found=False
     #         if abs(E[j]-e[j,])<1e-8
     #     e[:,i] /=np.max(np.abs(e[:,i]))
-    
+
     emax=np.max(e,axis=0)
     emin=np.min(e,axis=0)
-    
+
     es = np.zeros((2**R,n))
     for i in range(2**R):
         es[i,:]=(e[i,:]-emin)/(emax-emin)
-    
-    
+
     ue={}
     lab={}
     j=0
@@ -233,7 +238,7 @@ def getSpectrum(CR, FR):
     return x, e, es, ue, lab
 
 class QAOAChoose(QAOAbase):
-    
+
     num_params=2
     #def __init__(self, CR, FR):
     #    super().__init__(CR, FR)
@@ -264,7 +269,7 @@ class QAOAChoose(QAOAbase):
                 qc.barrier()
                 qc.barrier()
         return qc
-    
+
 class QAOANor(QAOAbase):
 
     num_params=3
@@ -293,9 +298,7 @@ class QAOANor(QAOAbase):
                 qc.barrier()
                 qc.barrier()
         return qc
-    
-    
-    
+
 class QAOASwe(QAOAbase):
 
     num_params=2
