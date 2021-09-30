@@ -1,7 +1,8 @@
 import numpy as np
-from qiskit import *
-
 import itertools
+
+from qiskit import *
+from scipy.optimize import minimize
 
 class QAOAbase:
 
@@ -23,7 +24,7 @@ class QAOAbase:
                 print(x, (self.CR @ x))
             return  ( (self.CR @ x) + mu *excost  )
 
-    def measurementStatistics(self, job, nb, ng, nd=None, mu=1):
+    def measurementStatisticsDebug(self, job, nb, ng, nd=None, mu=1, usestatevec=True):
         costs=self.cost_vector(mu)
         if self.num_params==2:
             E=np.zeros((nb,ng))
@@ -31,7 +32,15 @@ class QAOAbase:
                 for j in range(ng):
                     statevector = job.result().results[j+ng*i].data.statevector
                     probs = np.abs(statevector)**2
-                    E[i,j] = costs @ probs[::-1]
+                    res_dict = job.result().get_counts()
+                    print(probs)
+                    print(costs)
+                    print(res_dict)
+                    e1=0
+                    for key in res_dict:
+                        e1 += res_dict[key]*self.cost(key, mu=mu)
+                    e2=costs @ probs
+                    print("E=",e1,e2)
         else:
             E=np.zeros((nb,ng,nd))
             for i in range(nb):
@@ -40,6 +49,43 @@ class QAOAbase:
                         statevector = job.result().results[l+nd*(j+ng*i)].data.statevector
                         probs = np.abs(statevector)**2
                         E[i,j,l] = costs @ probs[::-1]
+    #             print(costs,probs)
+        return E
+
+
+    def measurementStatistics(self, job, nb=None, ng=None, nd=None, mu=1, usestatevec=True):
+        if usestatevec:
+            costs=self.cost_vector(mu)
+        if nb==None and ng==None and nd==None:
+            E=0
+            if usestatevec:
+                statevector = job.result().results[0].data.statevector
+                probs = np.abs(statevector)**2
+                E = costs @ probs
+            else:
+                res_dict = job.result().get_counts()
+                for key in res_dict:
+                    E += res_dict[key]*self.cost(key, mu=mu)
+        elif self.num_params==2:
+            E=np.zeros((nb,ng))
+            for i in range(nb):
+                for j in range(ng):
+                    if usestatevec:
+                        statevector = job.result().results[j+ng*i].data.statevector
+                        probs = np.abs(statevector)**2
+                        E[i,j] = costs @ probs
+                    else:
+                        res_dict = job.result().get_counts()[j+ng*i]
+                        for key in res_dict:
+                            E[i,j] += res_dict[key]*self.cost(key, mu=mu)
+        else:
+            E=np.zeros((nb,ng,nd))
+            for i in range(nb):
+                for j in range(ng):
+                    for l in range(nd):
+                        statevector = job.result().results[l+nd*(j+ng*i)].data.statevector
+                        probs = np.abs(statevector)**2
+                        E[i,j,l] = costs @ probs
     #             print(costs,probs)
         return E
 
@@ -125,6 +171,41 @@ class QAOAbase:
             index=i_d+nd*(i_g+ng*i_b)
 
         return E, x0, job, index
+
+    global g_it
+    global g_jobs
+    global g_values
+    global g_x
+
+    def getval(self, x, backend, mu, useExco, depth, sv):
+        global g_it, g_jobs, g_values, g_x
+        g_it+=1
+
+        if useExco is not None:
+            qc = self.createCircuit(x, useExco, sv=sv)
+        else:
+            qc = self.createCircuit(x, mu, depth, sv=sv)
+
+        job = execute(qc, backend)
+
+        val = self.measurementStatistics(job, mu=mu)
+
+        g_values[str(g_it)] = val
+        g_jobs[str(g_it)] = job
+        g_x[str(g_it)] = x
+        return val
+
+    def getlocalmin(self, x0, backend, mu, useExco=None, depth=1, barrier=False, sv=None, method="Nelder-Mead"):
+
+        global g_it, g_jobs, g_values, g_x
+        g_it=0
+        g_jobs={}
+        g_values={}
+        g_x={}
+
+        out = minimize(self.getval, x0=x0, method=method, args=(backend, mu, useExco, depth, sv), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
+        ind = min(g_values, key=g_values.get)
+        return out, g_jobs[ind], g_x[ind]
 
 
 import matplotlib.pyplot as pl
