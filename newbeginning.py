@@ -15,7 +15,7 @@ class QAOAbase:
 
     def cost(self, binstring,mu=1, plotsolutions=False):
         # Reverse string since qiskit uses ordering MSB ... LSB
-        x = np.array(list(map(int,binstring[::-1])))
+        x = np.array(list(map(int,binstring)))
         if self.CR is None:
             return  np.sum((1 - (self.FR @ x))**2)
         else:
@@ -23,35 +23,6 @@ class QAOAbase:
             if plotsolutions and excost==0:
                 print(x, (self.CR @ x))
             return  ( (self.CR @ x) + mu *excost  )
-
-    def measurementStatisticsDebug(self, job, nb, ng, nd=None, mu=1, usestatevec=True):
-        costs=self.cost_vector(mu)
-        if self.num_params==2:
-            E=np.zeros((nb,ng))
-            for i in range(nb):
-                for j in range(ng):
-                    statevector = job.result().results[j+ng*i].data.statevector
-                    probs = np.abs(statevector)**2
-                    res_dict = job.result().get_counts()
-                    print(probs)
-                    print(costs)
-                    print(res_dict)
-                    e1=0
-                    for key in res_dict:
-                        e1 += res_dict[key]*self.cost(key, mu=mu)
-                    e2=costs @ probs
-                    print("E=",e1,e2)
-        else:
-            E=np.zeros((nb,ng,nd))
-            for i in range(nb):
-                for j in range(ng):
-                    for l in range(nd):
-                        statevector = job.result().results[l+nd*(j+ng*i)].data.statevector
-                        probs = np.abs(statevector)**2
-                        E[i,j,l] = costs @ probs[::-1]
-    #             print(costs,probs)
-        return E
-
 
     def measurementStatistics(self, job, nb=None, ng=None, nd=None, mu=1, usestatevec=True):
         if usestatevec:
@@ -61,11 +32,11 @@ class QAOAbase:
             if usestatevec:
                 statevector = job.result().results[0].data.statevector
                 probs = np.abs(statevector)**2
-                E = costs @ probs
+                E = costs @ probs[::-1]
             else:
                 res_dict = job.result().get_counts()
                 for key in res_dict:
-                    E += res_dict[key]*self.cost(key, mu=mu)
+                    E += res_dict[key]*self.cost(key[::-1], mu=mu)
         elif self.num_params==2:
             E=np.zeros((nb,ng))
             for i in range(nb):
@@ -77,7 +48,7 @@ class QAOAbase:
                     else:
                         res_dict = job.result().get_counts()[j+ng*i]
                         for key in res_dict:
-                            E[i,j] += res_dict[key]*self.cost(key, mu=mu)
+                            E[i,j] += res_dict[key]*self.cost(key[::-1], mu=mu)
         else:
             E=np.zeros((nb,ng,nd))
             for i in range(nb):
@@ -231,92 +202,111 @@ def getfig(E, beta_max=np.pi,gamma_max=2*np.pi,nb=20,ng=40):
 
 
 def getSpectrum(CR, FR):
-    I=np.array((1,1))
-    Z=np.array((1,-1))
+    Ham=False
+    if Ham:
+        I=np.array((1,1))
+        Z=np.array((1,-1))
 
-    R=CR.shape[0]
+        R=CR.shape[0]
 
-    H_cost = np.zeros(2**R)
-    H_exco = np.zeros(2**R)
-    for r in range(R):
-        for i in range(R):
-            if i==0:
-                if i==r:
-                    Zr = Z
-                else:
-                    Zr = I
-            else:
-                if i==r:
-                    Zr = np.kron(Z,Zr)
-                else:
-                    Zr = np.kron(I,Zr)
-        H_cost += 0.5*CR[r]*Zr
-        H_exco += 0.5 * FR[:,r] @ (np.sum(FR,axis = 1) - 2)*Zr
-
-    for r in range(R):
-        for r_ in range(r+1,R):
+        H_cost = np.zeros(2**R)
+        H_exco = np.zeros(2**R)
+        for r in range(R):
             for i in range(R):
                 if i==0:
-                    if i==r or i==r_:
-                        ZZrr_ = Z
+                    if i==r:
+                        Zr = Z
                     else:
-                        ZZrr_ = I
+                        Zr = I
                 else:
-                    if i==r or i==r_:
-                        ZZrr_ = np.kron(Z,ZZrr_)
+                    if i==r:
+                        Zr = np.kron(Z,Zr)
                     else:
-                        ZZrr_ = np.kron(I,ZZrr_)
-            Jrr_  = 0.5 * FR[:,r] @ FR[:,r_]
-            H_exco+=Jrr_*ZZrr_
+                        Zr = np.kron(I,Zr)
+            H_cost += 0.5*CR[r]*Zr
+            H_exco += 0.5 * FR[:,r] @ (np.sum(FR,axis = 1) - 2)*Zr
 
-    n=100
-    e = np.zeros((2**R,n))
-    x=np.linspace(0,4,n)
-    # E=[]
-    for i in range(n):
-        e[:,i]=-H_cost+x[i]*H_exco
-    #     if i==0:
-    #     for j in range(len(E)):
-    #         found=False
-    #         if abs(E[j]-e[j,])<1e-8
-    #     e[:,i] /=np.max(np.abs(e[:,i]))
+        for r in range(R):
+            for r_ in range(r+1,R):
+                for i in range(R):
+                    if i==0:
+                        if i==r or i==r_:
+                            ZZrr_ = Z
+                        else:
+                            ZZrr_ = I
+                    else:
+                        if i==r or i==r_:
+                            ZZrr_ = np.kron(Z,ZZrr_)
+                        else:
+                            ZZrr_ = np.kron(I,ZZrr_)
+                Jrr_  = 0.5 * FR[:,r] @ FR[:,r_]
+                H_exco+=Jrr_*ZZrr_
 
-    emax=np.max(e,axis=0)
-    emin=np.min(e,axis=0)
+        n=100
+        e = np.zeros((2**R,n))
+        x=np.linspace(0,4,n)
+        # E=[]
+        for i in range(n):
+            e[:,i]=-H_cost+x[i]*H_exco
+        #     if i==0:
+        #     for j in range(len(E)):
+        #         found=False
+        #         if abs(E[j]-e[j,])<1e-8
+        #     e[:,i] /=np.max(np.abs(e[:,i]))
 
-    es = np.zeros((2**R,n))
-    for i in range(2**R):
-        es[i,:]=(e[i,:]-emin)/(emax-emin)
+        emax=np.max(e,axis=0)
+        emin=np.min(e,axis=0)
 
-    ue={}
-    lab={}
-    j=0
-    ci=33
-    for i in range(2**R):
-        used=False
-        ik=None
-    #     print()
-    #     print("new i",i)
-    #     print(ue)
-        for key in ue:
-    #     for j in range(len(ue)):
-    #         print("key=", key, e[i,0], ue[key][0])
-    #         print(ue)
-            if abs(e[i,ci]-ue[key][ci])<1e-8:
-                used=True
-                ik=key
-                break
-    #     print("used=", used)
-        if used:
-            print(e[i,ci], "already used")
-            lab[ik]+=", "+"{0:b}".format(i).zfill(R)
-        else:
-            j+=1
-            ue[j] = e[i,:]
-            lab[j]="{0:b}".format(i).zfill(R)
-    # for j in range(len(ue)):
-    #         pl.plot(x,ue[i,:], label="{0:b}".format(i).zfill(3))
-    return x, e, es, ue, lab
+        es = np.zeros((2**R,n))
+        for i in range(2**R):
+            es[i,:]=(e[i,:]-emin)/(emax-emin)
+
+        ue={}
+        lab={}
+        j=0
+        ci=33
+        for i in range(2**R):
+            used=False
+            ik=None
+        #     print()
+        #     print("new i",i)
+        #     print(ue)
+            for key in ue:
+        #     for j in range(len(ue)):
+        #         print("key=", key, e[i,0], ue[key][0])
+        #         print(ue)
+                if abs(e[i,ci]-ue[key][ci])<1e-8:
+                    used=True
+                    ik=key
+                    break
+        #     print("used=", used)
+            if used:
+                print(e[i,ci], "already used")
+                lab[ik]+=", "+"{0:b}".format(i).zfill(R)
+            else:
+                j+=1
+                ue[j] = e[i,:]
+                lab[j]="{0:b}".format(i).zfill(R)
+        # for j in range(len(ue)):
+        #         pl.plot(x,ue[i,:], label="{0:b}".format(i).zfill(3))
+        return x, e, es, ue, lab
+    else:
+
+        qaoa = QAOAbase(CR, FR)
+        n=2
+        mumax=4
+        R=CR.shape[0]
+        ue = np.zeros((2**R,n))
+        x=np.linspace(0,mumax,n)
+
+        ue={}
+        lab={}
+        for i in range(2**R):
+            binstr="{0:b}".format(i).zfill(R)
+            lab[i]=binstr
+            ue[i]=np.array((qaoa.cost(binstr,0), qaoa.cost(binstr,mumax)))
+        return x, ue,ue,ue,lab
+
 
 class QAOAChoose(QAOAbase):
 
