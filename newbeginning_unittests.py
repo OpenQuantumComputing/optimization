@@ -37,16 +37,18 @@ class TestQAOA(unittest.TestCase):
             for s in state_strings:
 
                 # check cost function
-                self.assertAlmostEqual(qaoa.cost(s, mu=mu), solution[s])
+                co, ex = qaoa.cost(s)
+                self.assertAlmostEqual(co+mu*ex, solution[s])
 
                 # check measurementstatistics function
                 circuit = qaoa.createCircuit(s)
                 job = execute(circuit, backend)
                 res_dict = job.result().get_counts()
                 statevector = job.result().results[0].data.statevector
-
-                self.assertAlmostEqual(qaoa.measurementStatistics(job, mu=mu, usestatevec=True), solution[s])
-                self.assertAlmostEqual(qaoa.measurementStatistics(job, mu=mu, usestatevec=False), solution[s])
+                e,_,_ = qaoa.measurementStatistics(job, mu=mu, usestatevec=True)
+                self.assertAlmostEqual(e, solution[s])
+                e,_,_ = qaoa.measurementStatistics(job, mu=mu, usestatevec=False)
+                self.assertAlmostEqual(e, solution[s])
 
     def test_qaoa2qubit(self):
         for mu in [0,1,2.2]:
@@ -74,7 +76,8 @@ class TestQAOA(unittest.TestCase):
                 #print(s, qaoa.cost(s, mu=mu))
 
                 # check cost function
-                self.assertAlmostEqual(qaoa.cost(s, mu=mu), solution[s])
+                co, ex = qaoa.cost(s)
+                self.assertAlmostEqual(co+mu*ex, solution[s])
 
                 # check measurementstatistics function
                 circuit = qaoa.createCircuit(s)
@@ -82,8 +85,10 @@ class TestQAOA(unittest.TestCase):
                 res_dict = job.result().get_counts()
                 statevector = job.result().results[0].data.statevector
 
-                self.assertAlmostEqual(qaoa.measurementStatistics(job, mu=mu, usestatevec=True), solution[s])
-                self.assertAlmostEqual(qaoa.measurementStatistics(job, mu=mu, usestatevec=False), solution[s])
+                e,_,_ = qaoa.measurementStatistics(job, mu=mu, usestatevec=True)
+                self.assertAlmostEqual(e, solution[s])
+                e,_,_ = qaoa.measurementStatistics(job, mu=mu, usestatevec=False)
+                self.assertAlmostEqual(e, solution[s])
 
 
 if __name__ == '__main__':

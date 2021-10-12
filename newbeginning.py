@@ -14,63 +14,94 @@ class QAOAbase:
     def createCircuit(self):
         raise NotImplementedError
 
-    def cost(self, binstring,mu=1, plotsolutions=False):
+    def cost2(self, binstring,plotsolutions=False):
         x = np.array(list(map(int,binstring)))
-        excost=np.sum((1 - (self.FR @ x))**2)
+        exco=np.sum((1 - (self.FR @ x))**2)
         if self.CR is None:
-            return  excost
+            cost=0.
         else:
-            if plotsolutions and excost==0:
-                print(x, (self.CR @ x))
-            return  ( (self.CR @ x) + mu *excost  )
+            cost=(self.CR @ x)
+        if plotsolutions and excost==0:
+            print(x, (self.CR @ x))
+        return  cost, exco
+
+    def cost(self, binstring,plotsolutions=False):
+        x = np.array(list(map(int,binstring)))
+        exco=np.sum((np.sum(self.FR*x,1) -1)**2)
+        if self.CR is None:
+            cost=0.
+        else:
+            cost=np.sum(x*(self.CR**2))
+        return  cost, exco
 
     def cost_vector(self, mu, plotsolutions=False):
         state_strings = np.array([''.join(i) for i in itertools.product('01', repeat= self.R)])
         costs=np.zeros((2**self.R))
+        co=np.zeros((2**self.R))
+        ex=np.zeros((2**self.R))
         for i in range(2**self.R):
             # Reverse string since qiskit uses ordering MSB ... LSB
-            costs[i] = self.cost(state_strings[i][::-1], mu=mu, plotsolutions=plotsolutions)
+            co[i], ex[i] = self.cost(state_strings[i][::-1], plotsolutions=plotsolutions)
+            costs[i] = co[i]+mu*ex[i]
         if plotsolutions:
             print("min cost=", np.min(costs))
-        return costs
+        return costs, co, ex
 
 
     def measurementStatistics(self, job, nb=None, ng=None, nd=None, mu=1, usestatevec=True):
         if usestatevec:
-            costs=self.cost_vector(mu)
+            costs, co, ex =self.cost_vector(mu)
         if nb==None and ng==None and nd==None:
             E=0
+            Ecost=0
+            Eexco=0
             if usestatevec:
                 statevector = job.result().results[0].data.statevector
                 probs = np.abs(statevector)**2
                 E = costs @ probs
+                Ecost = co @ probs
+                Eexco = ex @ probs
             else:
                 res_dict = job.result().get_counts()
                 for key in res_dict:
                     # Reverse string since qiskit uses ordering MSB ... LSB
-                    E += res_dict[key]*self.cost(key[::-1], mu=mu)
+                    co, ex = self.cost(key[::-1])
+                    E += res_dict[key]*(co+mu*ex)
+                    Ecost += res_dict[key]*co
+                    Eexco += res_dict[key]*mu
         elif self.num_params==2:
             E=np.zeros((nb,ng))
+            Ecost=np.zeros((nb,ng))
+            Eexco=np.zeros((nb,ng))
             for i in range(nb):
                 for j in range(ng):
                     if usestatevec:
                         statevector = job.result().results[j+ng*i].data.statevector
                         probs = np.abs(statevector)**2
                         E[i,j] = costs @ probs
+                        Ecost[i,j] = co @ probs
+                        Eexco[i,j] = ex @ probs
                     else:
                         res_dict = job.result().get_counts()[j+ng*i]
                         for key in res_dict:
                             # Reverse string since qiskit uses ordering MSB ... LSB
-                            E[i,j] += res_dict[key]*self.cost(key[::-1], mu=mu)
+                            co, ex = self.cost(key[::-1])
+                            E[i,j] += res_dict[key]*(co+mu*ex)
+                            Ecost[i,j] += res_dict[key]*co
+                            Eexco[i,j] += res_dict[key]*ex
         else:
             E=np.zeros((nb,ng,nd))
+            Ecost=np.zeros((nb,ng,nd))
+            Eexco=np.zeros((nb,ng,nd))
             for i in range(nb):
                 for j in range(ng):
                     for l in range(nd):
                         statevector = job.result().results[l+nd*(j+ng*i)].data.statevector
                         probs = np.abs(statevector)**2
                         E[i,j,l] = costs @ probs
-        return E
+                        Ecost[i,j,l] = co @ probs
+                        Eexco[i,j,l] = ex @ probs
+        return E, Ecost, Eexco
 
 
     def mix_states(self, qc, beta):
@@ -82,7 +113,7 @@ class QAOAbase:
         return qc
 
 
-    def apply_exco(self, qc, FR, gamma):
+    def apply_exco2(self, qc, gamma):
         for r in range(qc.num_qubits):
 
             hr = 0.5 * self.FR[:,r] @ (np.sum(self.FR,axis = 1) - 2)
@@ -97,7 +128,31 @@ class QAOAbase:
                     qc.cx(r, r_)
         return qc
 
-    def apply_cost(self, qc, CR, gamma):
+
+    def apply_exco(self, qc, gamma):
+        for i in range(qc.num_qubits):
+            w=0
+            for j in range(self.F):
+                w += .5 * self.FR[j,i]*(np.sum(self.FR[j,:])-2)
+            if self.CR is not None:
+                w += .25 * self.CR[i]**2
+            if abs(w)>1e-14:
+                wg = w * gamma
+                qc.rz(wg, i)
+            ###
+            for j in range(i+1, self.R):
+                w=0
+                for k in range(self.F):
+                    w += 0.5 * self.FR[k,i]*self.FR[k,j]
+                    
+                if w>0:
+                    wg = w * gamma
+                    qc.cx(i, j)
+                    qc.rz(wg, j)
+                    qc.cx(i, j)
+        return qc
+
+    def apply_cost(self, qc, gamma):
         for r in range(qc.num_qubits):
             hr = 0.5 * self.CR[r]
             if not np.isclose(hr, 0):
@@ -126,7 +181,7 @@ class QAOAbase:
                         circuits.append(qc)
 
         job = execute(circuits, backend)
-        E = self.measurementStatistics(job, nb, ng, nd, mu=mu)
+        E, Ecost, Eexco = self.measurementStatistics(job, nb, ng, nd, mu=mu)
 
         if self.num_params==2:
             i_b,i_g=np.where(E==np.min(E))
@@ -147,7 +202,7 @@ class QAOAbase:
             x0=np.array((gamma[i_g],beta[i_b],delta[i_d]))
             index=i_d+nd*(i_g+ng*i_b)
 
-        return E, x0, job, index
+        return E, Ecost, Eexco, x0, job, index
 
     global g_it
     global g_jobs
@@ -165,7 +220,7 @@ class QAOAbase:
 
         job = execute(qc, backend)
 
-        val = self.measurementStatistics(job, mu=mu)
+        val, _, _ = self.measurementStatistics(job, mu=mu)
 
         g_values[str(g_it)] = val
         g_jobs[str(g_it)] = job
@@ -207,7 +262,7 @@ def getfig(E, beta_max=np.pi,gamma_max=2*np.pi,nb=20,ng=40):
     return fig
 
 
-def getSpectrum(CR, FR):
+def getSpectrum(CR, FR, mumax=2):
     Ham=False
     if Ham:
         I=np.array((1,1))
@@ -300,7 +355,6 @@ def getSpectrum(CR, FR):
 
         qaoa = QAOAbase(CR, FR)
         n=2
-        mumax=4
         R=CR.shape[0]
         ue = np.zeros((2**R,n))
         x=np.linspace(0,mumax,n)
@@ -310,7 +364,8 @@ def getSpectrum(CR, FR):
         for i in range(2**R):
             binstr="{0:b}".format(i).zfill(R)
             lab[i]=binstr
-            ue[i]=np.array((qaoa.cost(binstr,0), qaoa.cost(binstr,mumax)))
+            co, ex = qaoa.cost(binstr,0)
+            ue[i]=np.array((co, co+mumax*ex))
         return x, ue,ue,ue,lab
 
 
@@ -326,20 +381,36 @@ class QAOAChoose(QAOAbase):
         qc = QuantumCircuit(self.R)
         if sv is not None:
             qc.initialize(sv)
-            if barrier:
-                qc.barrier()
-        qc.h(range(self.R))
+        else:
+            qc.h(range(self.R))
         if barrier:
             qc.barrier()
         i=-1
         for ue in useExco:
             i+=1
             if ue:
-                qc = self.apply_exco(qc, self.FR, gamma[i])
+                qc = self.apply_exco(qc, gamma[i])
                 qc = self.mix_states(qc, beta[i])
             else:
-                qc = self.apply_cost(qc, self.CR, gamma[i])
+                qc = self.apply_cost(qc, gamma[i])
                 qc = self.mix_states(qc, beta[i])
+                #if False:
+                #    qc.rxx(beta[i], 0, 1)
+                #    qc.ryy(beta[i], 0, 1)
+                #    qc.rxx(beta[i], 1, 0)
+                #    qc.ryy(beta[i], 1, 0)
+                #else:
+                #    # 0011 <-> 1101
+                #    qc.rxx(beta[i]/2, 2, 0)
+                #    qc.ryy(beta[i]/2, 2, 0)
+                #    qc.rxx(beta[i]/2, 2, 1)
+                #    qc.ryy(beta[i]/2, 2, 1)
+
+                #    qc.rxx(beta[i]/2, 0, 2)
+                #    qc.ryy(beta[i]/2, 0, 2)
+                #    qc.rxx(beta[i]/2, 1, 2)
+                #    qc.ryy(beta[i]/2, 1, 2)
+
             if barrier:
                 qc.barrier()
             if barrier:
@@ -358,17 +429,16 @@ class QAOANor(QAOAbase):
         qc = QuantumCircuit(self.R)
         if sv is not None:
             qc.initialize(sv)
-            if barrier:
-                qc.barrier()
-        qc.h(range(self.R))
+        else:
+            qc.h(range(self.R))
         if barrier:
             qc.barrier()
         i=-1
         for d in range(depth):
             i+=1
-            qc = self.apply_exco(qc, self.FR, gamma[i])
+            qc = self.apply_exco(qc, gamma[i])
             qc = self.mix_states(qc, beta[i])
-            qc = self.apply_cost(qc, self.CR, delta[i])
+            qc = self.apply_cost(qc, delta[i])
             qc = self.mix_states(qc, beta[i])
             if barrier:
                 qc.barrier()
@@ -385,16 +455,15 @@ class QAOASwe(QAOAbase):
         qc = QuantumCircuit(self.R)
         if sv is not None:
             qc.initialize(sv)
-            if barrier:
-                qc.barrier()
-        qc.h(range(self.R))
+        else:
+            qc.h(range(self.R))
         if barrier:
             qc.barrier()
         i=-1
         for d in range(depth):
             i+=1
-            qc = self.apply_exco(qc, self.FR, mu*gamma[i])
-            qc = self.apply_cost(qc, self.CR, gamma[i])
+            qc = self.apply_exco(qc, mu*gamma[i])
+            qc = self.apply_cost(qc, gamma[i])
             if barrier:
                 qc.barrier()
             qc = self.mix_states(qc, beta[i])
