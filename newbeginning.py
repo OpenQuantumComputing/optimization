@@ -14,18 +14,18 @@ class QAOAbase:
     def createCircuit(self):
         raise NotImplementedError
 
-    def cost2(self, binstring,plotsolutions=False):
+    def cost(self, binstring,plotsolutions=False):
         x = np.array(list(map(int,binstring)))
         exco=np.sum((1 - (self.FR @ x))**2)
         if self.CR is None:
             cost=0.
         else:
             cost=(self.CR @ x)
-        if plotsolutions and excost==0:
+        if plotsolutions and exco==0:
             print(x, (self.CR @ x))
         return  cost, exco
 
-    def cost(self, binstring,plotsolutions=False):
+    def cost2(self, binstring,plotsolutions=False):
         x = np.array(list(map(int,binstring)))
         exco=np.sum((np.sum(self.FR*x,1) -1)**2)
         if self.CR is None:
@@ -48,7 +48,7 @@ class QAOAbase:
         return costs, co, ex
 
 
-    def measurementStatistics(self, job, nb=None, ng=None, nd=None, mu=1, usestatevec=True):
+    def measurementStatistics(self, job, nb=None, ng=None, nd=None, mu=1, usestatevec=False):
         if usestatevec:
             costs, co, ex =self.cost_vector(mu)
         if nb==None and ng==None and nd==None:
@@ -250,11 +250,11 @@ def getfig(E, beta_max=np.pi,gamma_max=2*np.pi,nb=20,ng=40):
 
     fig=pl.figure(figsize=(20,10), dpi=200, facecolor='w', edgecolor='k');
     pl.imshow(E,interpolation='nearest',origin='lower'
-                ,extent=[shiftg,gamma_max-shiftg,shiftb,beta_max-shiftb], aspect=1)
+                ,extent=[gamma[0]-shiftg, gamma[-1]+shiftg, beta[0]-shiftb, beta[-1]+shiftb], aspect=1)
     pl.xlabel('$\gamma$',loc='left')
     pl.ylabel(r'$\beta$')
     pl.colorbar(shrink=0.75, pad=0.05, orientation="horizontal")
-    pl.xticks(np.linspace(0, gamma_max,9,endpoint=False))#, ['0', r'$\pi$', r'$2\pi$'])
+    pl.xticks(np.linspace(0, gamma_max,10,endpoint=False))#, ['0', r'$\pi$', r'$2\pi$'])
     pl.yticks(np.linspace(0, beta_max,5,endpoint=False))#, ['0', r'$\pi$', r'$2\pi$'])
     #pl.yticks([0,beta_max], ['0', r'$\pi/2$'])
     pl.xlabel('$\gamma$',loc='left')
@@ -393,23 +393,149 @@ class QAOAChoose(QAOAbase):
                 qc = self.mix_states(qc, beta[i])
             else:
                 qc = self.apply_cost(qc, gamma[i])
-                qc = self.mix_states(qc, beta[i])
-                #if False:
-                #    qc.rxx(beta[i], 0, 1)
-                #    qc.ryy(beta[i], 0, 1)
-                #    qc.rxx(beta[i], 1, 0)
-                #    qc.ryy(beta[i], 1, 0)
-                #else:
-                #    # 0011 <-> 1101
-                #    qc.rxx(beta[i]/2, 2, 0)
-                #    qc.ryy(beta[i]/2, 2, 0)
-                #    qc.rxx(beta[i]/2, 2, 1)
-                #    qc.ryy(beta[i]/2, 2, 1)
+                if False:
+                    qc = self.mix_states(qc, beta[i])
+                elif False:
+                    qc.rxx(beta[i], 0, 1)
+                    qc.ryy(beta[i], 0, 1)
+                    qc.rxx(beta[i], 1, 0)
+                    qc.ryy(beta[i], 1, 0)
+                else:
+                    ## 001 <-> 110
+                    #A=np.array([[0., 0., 0., 0., 0., 0., 0., 0.],
+                    #            [0., 0., 0., 0., 0., 0., 1., 0.],
+                    #            [0., 0., 0., 0., 0., 0., 0., 0.],
+                    #            [0., 0., 0., 0., 0., 0., 0., 0.],
+                    #            [0., 0., 0., 0., 0., 0., 0., 0.],
+                    #            [0., 0., 0., 0., 0., 0., 0., 0.],
+                    #            [0., 1., 0., 0., 0., 0., 0., 0.],
+                    #            [0., 0., 0., 0., 0., 0., 0., 0.]])
 
-                #    qc.rxx(beta[i]/2, 0, 2)
-                #    qc.ryy(beta[i]/2, 0, 2)
-                #    qc.rxx(beta[i]/2, 1, 2)
-                #    qc.ryy(beta[i]/2, 1, 2)
+                    #U = np.exp(-1j*beta[i]*A)
+                    #print(U)
+                    #qc.unitary(U, range(3), 'A('+"{:.2f}".format(beta[i])+")")
+                    if False:
+                        qc.barrier()
+                        # XXX
+                        for j in range(3):
+                            qc.h(j)
+                        qc.cx(0,1)
+                        qc.cx(1,2)
+                        qc.rz(beta[i], 2)
+                        qc.cx(1,2)
+                        qc.cx(0,1)
+                        for j in range(3):
+                            qc.h(j)
+
+                        qc.barrier()
+                        # XYY
+                        qc.s(1)
+                        qc.s(2)
+                        for j in range(3):
+                            qc.h(j)
+                        qc.cx(0,1)
+                        qc.cx(1,2)
+                        qc.rz(beta[i], 2)
+                        qc.cx(1,2)
+                        qc.cx(0,1)
+                        for j in range(3):
+                            qc.h(j)
+                        qc.sdg(1)
+                        qc.sdg(2)
+
+                        qc.barrier()
+                        # YXY
+                        qc.s(0)
+                        qc.s(2)
+                        for j in range(3):
+                            qc.h(j)
+                        qc.cx(0,1)
+                        qc.cx(1,2)
+                        qc.rz(beta[i], 2)
+                        qc.cx(1,2)
+                        qc.cx(0,1)
+                        for j in range(3):
+                            qc.h(j)
+                        qc.sdg(0)
+                        qc.sdg(2)
+
+                        qc.barrier()
+                        # -YYX
+                        qc.s(0)
+                        qc.s(1)
+                        for j in range(3):
+                            qc.h(j)
+                        qc.cx(0,1)
+                        qc.cx(1,2)
+                        qc.rz(-beta[i], 2)
+                        qc.cx(1,2)
+                        qc.cx(0,1)
+                        for j in range(3):
+                            qc.h(j)
+                        qc.sdg(0)
+                        qc.sdg(1)
+                        qc.barrier()
+                    else:
+                        qc.barrier()
+                        # XXX
+                        for j in range(3):
+                            qc.h(j)
+                        qc.cx(2,1)
+                        qc.cx(1,0)
+                        qc.rz(beta[i], 2)
+                        qc.cx(1,0)
+                        qc.cx(2,1)
+                        for j in range(3):
+                            qc.h(j)
+
+                        qc.barrier()
+                        # XYY
+                        qc.s(0)
+                        qc.s(1)
+                        for j in range(3):
+                            qc.h(j)
+                        qc.cx(2,1)
+                        qc.cx(1,0)
+                        qc.rz(beta[i], 2)
+                        qc.cx(1,0)
+                        qc.cx(2,1)
+                        for j in range(3):
+                            qc.h(j)
+                        qc.sdg(0)
+                        qc.sdg(1)
+
+                        qc.barrier()
+                        # YXY
+                        qc.s(0)
+                        qc.s(2)
+                        for j in range(3):
+                            qc.h(j)
+                        qc.cx(2,1)
+                        qc.cx(1,0)
+                        qc.rz(beta[i], 2)
+                        qc.cx(1,0)
+                        qc.cx(2,1)
+                        for j in range(3):
+                            qc.h(j)
+                        qc.sdg(0)
+                        qc.sdg(2)
+
+                        qc.barrier()
+                        # -YYX
+                        qc.s(1)
+                        qc.s(2)
+                        for j in range(3):
+                            qc.h(j)
+                        qc.cx(2,1)
+                        qc.cx(1,0)
+                        qc.rz(-beta[i], 2)
+                        qc.cx(1,0)
+                        qc.cx(2,1)
+                        for j in range(3):
+                            qc.h(j)
+                        qc.sdg(1)
+                        qc.sdg(2)
+                        qc.barrier()
 
             if barrier:
                 qc.barrier()
