@@ -14,7 +14,7 @@ class QAOAbase:
     def createCircuit(self):
         raise NotImplementedError
 
-    def cost(self, binstring,plotsolutions=False):
+    def cost2(self, binstring,plotsolutions=False):
         x = np.array(list(map(int,binstring)))
         exco=np.sum((1 - (self.FR @ x))**2)
         if self.CR is None:
@@ -25,7 +25,7 @@ class QAOAbase:
             print(x, (self.CR @ x))
         return  cost, exco
 
-    def cost2(self, binstring,plotsolutions=False):
+    def cost(self, binstring,plotsolutions=False):
         x = np.array(list(map(int,binstring)))
         exco=np.sum((np.sum(self.FR*x,1) -1)**2)
         if self.CR is None:
@@ -48,7 +48,7 @@ class QAOAbase:
         return costs, co, ex
 
 
-    def measurementStatistics(self, job, nb=None, ng=None, nd=None, mu=1, usestatevec=False):
+    def measurementStatistics(self, job, nb=None, ng=None, nd=None, mu=1, usestatevec=True):
         if usestatevec:
             costs, co, ex =self.cost_vector(mu)
         if nb==None and ng==None and nd==None:
@@ -104,12 +104,100 @@ class QAOAbase:
         return E, Ecost, Eexco
 
 
-    def mix_states(self, qc, beta):
+    def mix_statesX(self, qc, beta):
         qc.rx( - 2*beta, range(qc.num_qubits))
         return qc
 
     def mix_statesY(self, qc, beta):
         qc.ry( - 2*beta, range(qc.num_qubits))
+        return qc
+
+    def mix_states(self, qc, beta, binstring):
+        if binstring=='01<->10_ind01':
+            qc.rxx(-beta, 0, 1)
+            qc.ryy(-beta, 0, 1)
+            qc.rxx(-beta, 1, 0)
+            qc.ryy(-beta, 1, 0)
+        if binstring=='01<->10_ind12':
+            qc.rxx(-beta, 1, 2)
+            qc.ryy(-beta, 1, 2)
+            qc.rxx(-beta, 2, 1)
+            qc.ryy(-beta, 2, 1)
+        elif binstring=='001<->110':
+            #A=np.array([[0., 0., 0., 0., 0., 0., 0., 0.],
+            #            [0., 0., 0., 0., 0., 0., 1., 0.],
+            #            [0., 0., 0., 0., 0., 0., 0., 0.],
+            #            [0., 0., 0., 0., 0., 0., 0., 0.],
+            #            [0., 0., 0., 0., 0., 0., 0., 0.],
+            #            [0., 0., 0., 0., 0., 0., 0., 0.],
+            #            [0., 1., 0., 0., 0., 0., 0., 0.],
+            #            [0., 0., 0., 0., 0., 0., 0., 0.]])
+
+            #U = np.exp(-1j*beta*A)
+            #print(U)
+            #qc.unitary(U, range(3), 'A('+"{:.2f}".format(beta)+")")
+            qc.barrier()
+            # XXX
+            for j in range(3):
+                qc.h(j)
+            qc.cx(2,1)
+            qc.cx(1,0)
+            qc.rz(-beta/2, 0)
+            qc.cx(1,0)
+            qc.cx(2,1)
+            for j in range(3):
+                qc.h(j)
+
+            qc.barrier()
+            # XYY
+            qc.s(0)
+            qc.s(1)
+            for j in range(3):
+                qc.h(j)
+            qc.cx(2,1)
+            qc.cx(1,0)
+            qc.rz(-beta/2, 0)
+            qc.cx(1,0)
+            qc.cx(2,1)
+            for j in range(3):
+                qc.h(j)
+            qc.sdg(0)
+            qc.sdg(1)
+
+            qc.barrier()
+            # YXY
+            qc.s(0)
+            qc.s(2)
+            for j in range(3):
+                qc.h(j)
+            qc.cx(2,1)
+            qc.cx(1,0)
+            qc.rz(-beta/2, 0)
+            qc.cx(1,0)
+            qc.cx(2,1)
+            for j in range(3):
+                qc.h(j)
+            qc.sdg(0)
+            qc.sdg(2)
+
+            qc.barrier()
+            # -YYX
+            qc.s(1)
+            qc.s(2)
+            for j in range(3):
+                qc.h(j)
+            qc.cx(2,1)
+            qc.cx(1,0)
+            qc.rz(+beta/2, 0)
+            qc.cx(1,0)
+            qc.cx(2,1)
+            for j in range(3):
+                qc.h(j)
+            qc.sdg(1)
+            qc.sdg(2)
+            qc.barrier()
+        else:
+            raise NotImplementedError
         return qc
 
 
@@ -159,7 +247,7 @@ class QAOAbase:
                 qc.rz( 2*gamma * hr, r)
         return qc
 
-    def getElandscape(self, backend, mu,useExco=None, gamma_max=2*np.pi,beta_max=np.pi,delta_max=2*np.pi,ng=40,nb=20,nd=40, barrier=False, sv=None):
+    def getElandscape(self, backend, mu,useExco=None, gamma_max=2*np.pi,beta_max=np.pi,delta_max=2*np.pi,ng=40,nb=20,nd=40, barrier=False, sv=None, mixerbinstring=None):
         depth=1
         circuits=[]
         if self.num_params==2:
@@ -167,16 +255,16 @@ class QAOAbase:
                 for gamma in np.linspace(0,gamma_max,ng,endpoint=False):
 
                     if useExco is not None:
-                        qc=self.createCircuit(np.array((gamma,beta)), useExco, barrier=barrier, sv=sv)
+                        qc=self.createCircuit(np.array((gamma,beta)), useExco, barrier=barrier, sv=sv, mixerbinstring=mixerbinstring)
                     else:
-                        qc=self.createCircuit(np.array((gamma,beta)), mu, depth, barrier=barrier, sv=sv)
+                        qc=self.createCircuit(np.array((gamma,beta)), mu, depth, barrier=barrier, sv=sv, mixerbinstring=mixerbinstring)
 
                     circuits.append(qc)
         else:
             for delta in np.linspace(0,delta_max,nd,endpoint=False):
                 for beta in np.linspace(0,beta_max,nb,endpoint=False):
                     for gamma in np.linspace(0,gamma_max,ng,endpoint=False):
-                        qc=self.createCircuit(np.array((gamma,beta,delta)), mu, depth, barrier=barrier, sv=sv)
+                        qc=self.createCircuit(np.array((gamma,beta,delta)), mu, depth, barrier=barrier, sv=sv, mixerbinstring=mixerbinstring)
 
                         circuits.append(qc)
 
@@ -209,14 +297,14 @@ class QAOAbase:
     global g_values
     global g_x
 
-    def getval(self, x, backend, mu, useExco, depth, sv):
+    def getval(self, x, backend, mu, useExco, depth, sv, mixerbinstring):
         global g_it, g_jobs, g_values, g_x
         g_it+=1
 
         if useExco is not None:
-            qc = self.createCircuit(x, useExco, sv=sv)
+            qc = self.createCircuit(x, useExco, sv=sv, mixerbinstring=mixerbinstring)
         else:
-            qc = self.createCircuit(x, mu, depth, sv=sv)
+            qc = self.createCircuit(x, mu, depth, sv=sv, mixerbinstring=mixerbinstring)
 
         job = execute(qc, backend)
 
@@ -227,7 +315,7 @@ class QAOAbase:
         g_x[str(g_it)] = x
         return val
 
-    def getlocalmin(self, x0, backend, mu, useExco=None, depth=1, barrier=False, sv=None, method="Nelder-Mead"):
+    def getlocalmin(self, x0, backend, mu, useExco=None, depth=1, barrier=False, sv=None, mixerbinstring=None, method="Nelder-Mead"):
 
         global g_it, g_jobs, g_values, g_x
         g_it=0
@@ -235,7 +323,7 @@ class QAOAbase:
         g_values={}
         g_x={}
 
-        out = minimize(self.getval, x0=x0, method=method, args=(backend, mu, useExco, depth, sv), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
+        out = minimize(self.getval, x0=x0, method=method, args=(backend, mu, useExco, depth, sv, mixerbinstring), options={'xatol': 1e-2, 'fatol': 1e-1, 'disp': True})#, constraints=cons)
         ind = min(g_values, key=g_values.get)
         return out, g_jobs[ind], g_x[ind]
 
@@ -375,7 +463,7 @@ class QAOAChoose(QAOAbase):
     #def __init__(self, CR, FR):
     #    super().__init__(CR, FR)
 
-    def createCircuit(self, x,useExco,barrier=False,sv=None):
+    def createCircuit(self, x,useExco,barrier=False,sv=None, mixerbinstring=None):
         gamma=x[::2]
         beta=x[1::2]
         qc = QuantumCircuit(self.R)
@@ -390,152 +478,15 @@ class QAOAChoose(QAOAbase):
             i+=1
             if ue:
                 qc = self.apply_exco(qc, gamma[i])
-                qc = self.mix_states(qc, beta[i])
+                qc = self.mix_statesX(qc, beta[i])
             else:
                 qc = self.apply_cost(qc, gamma[i])
-                if False:
-                    qc = self.mix_states(qc, beta[i])
-                elif False:
-                    qc.rxx(beta[i], 0, 1)
-                    qc.ryy(beta[i], 0, 1)
-                    qc.rxx(beta[i], 1, 0)
-                    qc.ryy(beta[i], 1, 0)
-                else:
-                    ## 001 <-> 110
-                    #A=np.array([[0., 0., 0., 0., 0., 0., 0., 0.],
-                    #            [0., 0., 0., 0., 0., 0., 1., 0.],
-                    #            [0., 0., 0., 0., 0., 0., 0., 0.],
-                    #            [0., 0., 0., 0., 0., 0., 0., 0.],
-                    #            [0., 0., 0., 0., 0., 0., 0., 0.],
-                    #            [0., 0., 0., 0., 0., 0., 0., 0.],
-                    #            [0., 1., 0., 0., 0., 0., 0., 0.],
-                    #            [0., 0., 0., 0., 0., 0., 0., 0.]])
-
-                    #U = np.exp(-1j*beta[i]*A)
-                    #print(U)
-                    #qc.unitary(U, range(3), 'A('+"{:.2f}".format(beta[i])+")")
-                    if False:
-                        qc.barrier()
-                        # XXX
-                        for j in range(3):
-                            qc.h(j)
-                        qc.cx(0,1)
-                        qc.cx(1,2)
-                        qc.rz(beta[i], 2)
-                        qc.cx(1,2)
-                        qc.cx(0,1)
-                        for j in range(3):
-                            qc.h(j)
-
-                        qc.barrier()
-                        # XYY
-                        qc.s(1)
-                        qc.s(2)
-                        for j in range(3):
-                            qc.h(j)
-                        qc.cx(0,1)
-                        qc.cx(1,2)
-                        qc.rz(beta[i], 2)
-                        qc.cx(1,2)
-                        qc.cx(0,1)
-                        for j in range(3):
-                            qc.h(j)
-                        qc.sdg(1)
-                        qc.sdg(2)
-
-                        qc.barrier()
-                        # YXY
-                        qc.s(0)
-                        qc.s(2)
-                        for j in range(3):
-                            qc.h(j)
-                        qc.cx(0,1)
-                        qc.cx(1,2)
-                        qc.rz(beta[i], 2)
-                        qc.cx(1,2)
-                        qc.cx(0,1)
-                        for j in range(3):
-                            qc.h(j)
-                        qc.sdg(0)
-                        qc.sdg(2)
-
-                        qc.barrier()
-                        # -YYX
-                        qc.s(0)
-                        qc.s(1)
-                        for j in range(3):
-                            qc.h(j)
-                        qc.cx(0,1)
-                        qc.cx(1,2)
-                        qc.rz(-beta[i], 2)
-                        qc.cx(1,2)
-                        qc.cx(0,1)
-                        for j in range(3):
-                            qc.h(j)
-                        qc.sdg(0)
-                        qc.sdg(1)
-                        qc.barrier()
-                    else:
-                        qc.barrier()
-                        # XXX
-                        for j in range(3):
-                            qc.h(j)
-                        qc.cx(2,1)
-                        qc.cx(1,0)
-                        qc.rz(beta[i], 2)
-                        qc.cx(1,0)
-                        qc.cx(2,1)
-                        for j in range(3):
-                            qc.h(j)
-
-                        qc.barrier()
-                        # XYY
-                        qc.s(0)
-                        qc.s(1)
-                        for j in range(3):
-                            qc.h(j)
-                        qc.cx(2,1)
-                        qc.cx(1,0)
-                        qc.rz(beta[i], 2)
-                        qc.cx(1,0)
-                        qc.cx(2,1)
-                        for j in range(3):
-                            qc.h(j)
-                        qc.sdg(0)
-                        qc.sdg(1)
-
-                        qc.barrier()
-                        # YXY
-                        qc.s(0)
-                        qc.s(2)
-                        for j in range(3):
-                            qc.h(j)
-                        qc.cx(2,1)
-                        qc.cx(1,0)
-                        qc.rz(beta[i], 2)
-                        qc.cx(1,0)
-                        qc.cx(2,1)
-                        for j in range(3):
-                            qc.h(j)
-                        qc.sdg(0)
-                        qc.sdg(2)
-
-                        qc.barrier()
-                        # -YYX
-                        qc.s(1)
-                        qc.s(2)
-                        for j in range(3):
-                            qc.h(j)
-                        qc.cx(2,1)
-                        qc.cx(1,0)
-                        qc.rz(-beta[i], 2)
-                        qc.cx(1,0)
-                        qc.cx(2,1)
-                        for j in range(3):
-                            qc.h(j)
-                        qc.sdg(1)
-                        qc.sdg(2)
-                        qc.barrier()
+                if mixerbinstring is None:
+                    qc = self.mix_statesX(qc, beta[i])
+                #else:
+                    #qc = self.mix_states(qc, beta[i], mixerbinstring)
+                    #qc = self.mix_states(qc, beta[i], '01<->10_ind12')
+                    qc.rx( - 2*beta[i], 2)
 
             if barrier:
                 qc.barrier()
@@ -548,7 +499,7 @@ class QAOANor(QAOAbase):
 
     num_params=3
 
-    def createCircuit(self, x,mu,depth,barrier=False,sv=None):
+    def createCircuit(self, x,mu,depth,barrier=False,sv=None, mixerbinstring=None):
         gamma=x[::3]
         beta=x[1::3]
         delta=x[2::3]
@@ -563,9 +514,9 @@ class QAOANor(QAOAbase):
         for d in range(depth):
             i+=1
             qc = self.apply_exco(qc, gamma[i])
-            qc = self.mix_states(qc, beta[i])
+            qc = self.mix_statesX(qc, beta[i])
             qc = self.apply_cost(qc, delta[i])
-            qc = self.mix_states(qc, beta[i])
+            qc = self.mix_statesX(qc, beta[i])
             if barrier:
                 qc.barrier()
                 qc.barrier()
@@ -575,7 +526,7 @@ class QAOASwe(QAOAbase):
 
     num_params=2
 
-    def createCircuit(self, x,mu,depth,barrier=False,sv=None):
+    def createCircuit(self, x,mu,depth,barrier=False,sv=None, mixerbinstring=None):
         gamma=x[::2]
         beta=x[1::2]
         qc = QuantumCircuit(self.R)
@@ -592,7 +543,7 @@ class QAOASwe(QAOAbase):
             qc = self.apply_cost(qc, gamma[i])
             if barrier:
                 qc.barrier()
-            qc = self.mix_states(qc, beta[i])
+            qc = self.mix_statesX(qc, beta[i])
             if barrier:
                 qc.barrier()
                 qc.barrier()
