@@ -1,5 +1,6 @@
 from qiskit import QuantumRegister, ClassicalRegister, QuantumCircuit, execute
 import numpy as np
+import math
 
 import sys
 sys.path.append('../')
@@ -277,7 +278,13 @@ def createCircuit_MaxCut(x, depth, options=None):
 
                     if usebarrier:
                         circ.barrier()
-            elif k_cuts == 5:
+            elif k_cuts >= 5 and k_cuts<=7:
+                tt={}
+                tt[0]=[False,False,False]
+                tt[1]=[True,False,False]
+                tt[2]=[False,True,False]
+                tt[3]=[True,True,False]
+                tt[4]=[False,False,True]
                 for edge in G.edges():
                     i = int(edge[0])
                     j = int(edge[1])
@@ -296,158 +303,39 @@ def createCircuit_MaxCut(x, depth, options=None):
 
                     if usebarrier:
                         circ.barrier()
-                    circ.x(I)
-                    circ.x(I+1)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.x(I+1)
-                    circ.x(I)
-                    if usebarrier:
-                        circ.barrier()
-                    circ.x(J)
-                    circ.x(J+1)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.x(J+1)
-                    circ.x(J)
 
-                    if usebarrier:
-                        circ.barrier()
-                    circ.x(I+1)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.x(I+1)
-                    if usebarrier:
-                        circ.barrier()
-                    circ.x(J+1)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.x(J+1)
-
-                    if usebarrier:
-                        circ.barrier()
-                    circ.x(I)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.x(I)
-                    if usebarrier:
-                        circ.barrier()
-                    circ.x(J)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.x(J)
-
-                    if usebarrier:
-                        circ.barrier()
-            elif k_cuts == 6:
-                for edge in G.edges():
-                    i = int(edge[0])
-                    j = int(edge[1])
-                    w = G[edge[0]][edge[1]]['weight']
-                    wg = w * gamma
-                    I = i * k_bits
-                    J = j * k_bits
-
-                    for k in range(k_bits):
-                        circ.cx(I + k, J + k)
-                        circ.x(J + k)
-                    Cn_U3_0theta0(circ, [J-1+ind for ind in range(1,k_bits)], J+k_bits-1, -wg)
-                    for k in reversed(range(k_bits)):
-                        circ.x(J + k)
-                        circ.cx(I + k, J + k)
-
-                    if usebarrier:
-                        circ.barrier()
-                    circ.x(I+1)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.x(I+1)
-                    if usebarrier:
-                        circ.barrier()
-                    circ.x(J+1)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.x(J+1)
-
-                    if usebarrier:
-                        circ.barrier()
-                    circ.x(I)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.x(I)
-                    if usebarrier:
-                        circ.barrier()
-                    circ.x(J)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.x(J)
-
-                    if usebarrier:
-                        circ.barrier()
-            elif k_cuts == 7:
-                for edge in G.edges():
-                    i = int(edge[0])
-                    j = int(edge[1])
-                    w = G[edge[0]][edge[1]]['weight']
-                    wg = w * gamma
-                    I = i * k_bits
-                    J = j * k_bits
-
-                    for k in range(k_bits):
-                        circ.cx(I + k, J + k)
-                        circ.x(J + k)
-                    Cn_U3_0theta0(circ, [J-1+ind for ind in range(1,k_bits)], J+k_bits-1, -wg)
-                    for k in reversed(range(k_bits)):
-                        circ.x(J + k)
-                        circ.cx(I + k, J + k)
-                    if usebarrier:
-                        circ.barrier()
-                    circ.x(I)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.x(I)
-                    if usebarrier:
-                        circ.barrier()
-                    circ.x(J)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
-                    circ.mcx([J,J+1,J+2],ind_a2)
-                    circ.mcx([I,I+1,I+2],ind_a1)
-                    circ.x(J)
+                    n=2**k_bits-k_cuts+1
+                    for fi in range(n):
+                        for fj in range(n):
+                            if fi==fj:
+                                continue
+                            itt=-1
+                            for apply in tt[fi]:
+                                itt+=1
+                                if apply:
+                                    circ.x(I+itt)
+                            jtt=-1
+                            for apply in tt[fj]:
+                                jtt+=1
+                                if apply:
+                                    circ.x(J+jtt)
+                            circ.mcx([I,I+1,I+2],ind_a1)
+                            circ.mcx([J,J+1,J+2],ind_a2)
+                            Cn_U3_0theta0(circ, [ind_a1, ind_a2], J+k_bits-1, -wg)
+                            circ.mcx([J,J+1,J+2],ind_a2)
+                            circ.mcx([I,I+1,I+2],ind_a1)
+                            itt=-1
+                            for apply in tt[fi]:
+                                itt+=1
+                                if apply:
+                                    circ.x(I+itt)
+                            jtt=-1
+                            for apply in tt[fj]:
+                                jtt+=1
+                                if apply:
+                                    circ.x(J+jtt)
+                            if usebarrier:
+                                circ.barrier()
 
                     if usebarrier:
                         circ.barrier()

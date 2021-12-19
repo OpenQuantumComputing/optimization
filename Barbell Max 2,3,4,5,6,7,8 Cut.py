@@ -10,6 +10,7 @@ from networkx.drawing.nx_agraph import graphviz_layout
 from qiskit.visualization import *
 from scipy import optimize as opt
 from qaoa import *
+from maxkcut import *
 import os
 
 import sys
@@ -63,8 +64,13 @@ outstr=""
 for k_cuts in [2,3,4,5,6,7,8]:
     outstr+=str(k_cuts)
     print(" k=", k_cuts)
-    name="Barbell"+str(gamma_n)+"x"+str(beta_n)+"_v"+str(circuit_version)+"_k"+str(k_cuts)
-    Elandscape, gammabetas, E, best =  runQAOA(G, k_cuts, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=optmethod, circuit_version=circuit_version, shots=shots, name=name, rerun=rerun, maxdepth=maxdepth)
+    options={}
+    options['G']=G
+    options['k_cuts']=k_cuts
+    options['version']=1
+
+    options['name']="Barbell"+str(gamma_n)+"x"+str(beta_n)+"_v"+str(circuit_version)+"_k"+str(k_cuts)
+    Elandscape, gammabetas, E, best =  runQAOA(createCircuit_MaxCut, measurementStatistics_MaxCut, backend, gamma_n, beta_n, gamma_max, beta_max, optmethod=optmethod, shots=shots, rerun=rerun, maxdepth=maxdepth, options=options)
 
     #max_val, label = classical_maxkcut_solver(G, k_cuts)
     max_val=1
@@ -87,7 +93,7 @@ for k_cuts in [2,3,4,5,6,7,8]:
     pl.plot(gammabetas['xL_d1'][0], gammabetas['xL_d1'][1],'or')
 
     pl.tight_layout()
-    pl.savefig("pics/E_"+name+".png")
+    pl.savefig("pics/E_"+options['name']+".png")
     pl.close()
 
     for depth in depths:
