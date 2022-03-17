@@ -430,3 +430,109 @@ def print_info2(stringlist,T,simplify=True):
 
     display("H=", H)
     print("#sqg, #cnots=",num_Cnot(H))
+
+
+def get_Cs(B):
+    n=len(B[0])
+    m=len(B)
+    Cs=[]
+    als=all_states(n)
+    for i in range(2**n):
+        s1=als[i]
+        for j in range(i+1,2**n):
+            s2=als[j]
+            C1=[s1,s2]
+            ol=get_overlap(C1,B)
+            if len(ol)==0:
+                Cs.append(C1)
+    return Cs
+
+def analyzeAdding(Cs,B,Tall=False):
+    n=len(B[0])
+    m=len(B)
+
+    Hs={}
+    HSs={}
+    Cnots={}
+
+    if Tall:
+        for indi in range(m):
+            for indj in range(indi+1,m):
+                ind=str(indi)+","+str(indj)
+                Hs[ind]={}
+                HSs[ind]={}
+                Cnots[ind]={}
+
+                T=get_T(len(B),mode="leftright",i=indi,j=indj)
+                display(T)
+
+                HB=get_H(B,T)
+                Hs[ind]['B']=simplifyH(HB)
+                HSs[ind]['B']=HtoString(HB)
+                Cnots[ind]['B']=num_Cnot(HB)
+
+                T=get_T(2,mode="nearest_int")
+
+
+                for C in Cs:
+                    s1,s2=C
+                    key=s1+","+s2
+                    HC=get_H(C,T)
+                    Hadd=simplifyH(HB+HC)
+                    Hs[ind][key]=Hadd
+                    HSs[ind][key]=HtoString(Hadd)
+                    Cnots[ind][key]=num_Cnot(Hadd)
+        
+    else:
+        for indi in range(m):
+            Hs[indi]={}
+            HSs[indi]={}
+            Cnots[indi]={}
+
+            T=get_T(len(B),mode="leftright",i=indi,j=(indi+1)%len(B))
+            display(T)
+
+            HB=get_H(B,T)
+            Hs[indi]['B']=simplifyH(HB)
+            HSs[indi]['B']=HtoString(HB)
+            Cnots[indi]['B']=num_Cnot(HB)
+
+            T=get_T(2,mode="nearest_int")
+
+
+            for C in Cs:
+                s1,s2=C
+                key=s1+","+s2
+                HC=get_H(C,T)
+                Hadd=simplifyH(HB+HC)
+                Hs[indi][key]=Hadd
+                HSs[indi][key]=HtoString(Hadd)
+                Cnots[indi][key]=num_Cnot(Hadd)
+        if m>4:
+            for indi in [m,m+1]:
+                print(indi)
+                Hs[indi]={}
+                HSs[indi]={}
+                Cnots[indi]={}
+
+                T=get_T(len(B),mode="leftright",i=indi-m,j=(indi+4)%len(B))
+                display(T)
+
+                HB=get_H(B,T)
+                Hs[indi]['B']=simplifyH(HB)
+                HSs[indi]['B']=HtoString(HB)
+                Cnots[indi]['B']=num_Cnot(HB)
+
+                T=get_T(2,mode="nearest_int")
+
+
+                for C in Cs:
+                    s1,s2=C
+                    key=s1+","+s2
+                    HC=get_H(C,T)
+                    Hadd=simplifyH(HB+HC)
+                    Hs[indi][key]=Hadd
+                    HSs[indi][key]=HtoString(Hadd)
+                    Cnots[indi][key]=num_Cnot(Hadd)
+        
+    return Hs, HSs, Cnots
