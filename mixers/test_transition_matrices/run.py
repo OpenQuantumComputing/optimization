@@ -2,6 +2,7 @@ from openquantumcomputing.mixer_utilities import *
 from qiskit import *
 from QAOA_class import QAOA
 from matplotlib import pyplot as plt
+from sympy import Symbol
 import time, sys, pickle, itertools
 import numpy as np
 import networkx as nx
