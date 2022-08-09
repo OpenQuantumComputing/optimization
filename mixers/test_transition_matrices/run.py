@@ -3,7 +3,7 @@ from qiskit import *
 from QAOA_class import QAOA
 from matplotlib import pyplot as plt
 from sympy import Symbol
-import time, sys, pickle, itertools
+import time, sys, pickle, itertools, math
 import numpy as np
 import networkx as nx
 
@@ -23,10 +23,12 @@ for T_mode in T_modes:
     # create mixer
     print("create mixer")
     H_mixer = 0
+    T = get_T(len(feasible_states), T_mode)
     for i in range(len(feasible_states)):
         for j in range(i + 1, len(feasible_states)):
-            T_leftright = get_T(len(feasible_states), "leftright", i = i, j = j)
-            H_mixer += Symbol(f"c{i}{j}") * get_Pauli_string_with_algorithm3(feasible_states, T_leftright)
+            if not math.isclose(T[i, j], 0, abs_tol=1e-7):
+                T_leftright = get_T(len(feasible_states), "leftright", i = i, j = j)
+                H_mixer += Symbol(f"c{i}{j}") * get_Pauli_string_with_algorithm3(feasible_states, T_leftright)
 
     # find number of cnots
     print("find cnots")
