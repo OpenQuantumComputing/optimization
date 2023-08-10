@@ -6,7 +6,7 @@ from qiskit_finance.data_providers import RandomDataProvider
 
 class AssetData:
 
-    def __init__(self, N_assets, num_days,
+    def __init__(self, N_assets, num_days = 101,
                  seed = 0, start_time = datetime.datetime(2020, 1, 1)):
         """
         init function that initializes member variables
